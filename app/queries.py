@@ -65,6 +65,14 @@ def list_all_peers_with_totals(conn: sqlite3.Connection) -> list[dict[str, Any]]
     ]
 
 
+def list_all_users_simple(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Lightweight user list (id, name) for dropdowns. Sorted by name."""
+    return [
+        dict(r)
+        for r in conn.execute("SELECT id, name FROM users ORDER BY name").fetchall()
+    ]
+
+
 def get_user(conn: sqlite3.Connection, user_id: int) -> dict[str, Any] | None:
     row = conn.execute(
         "SELECT id, name, comment FROM users WHERE id = ?", (user_id,)

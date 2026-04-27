@@ -3,8 +3,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -97,8 +97,54 @@ def create_app(db_path: str) -> FastAPI:
         return templates.TemplateResponse(
             request,
             "peer.html",
-            {"peer": peer},
+            {"peer": peer, "all_users": q.list_all_users_simple(conn)},
         )
+
+    @app.post("/user/{user_id}/edit")
+    def edit_user(
+        user_id: int,
+        name: str = Form(...),
+        comment: str = Form(default=""),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        if not q.get_user(conn, user_id):
+            raise HTTPException(404, "user not found")
+        name = name.strip()
+        if not name:
+            raise HTTPException(400, "name required")
+        dbmod.update_user(conn, user_id, name, comment.strip() or None)
+        return RedirectResponse(f"/user/{user_id}", status_code=303)
+
+    @app.post("/peer/{peer_id}/edit")
+    def edit_peer(
+        peer_id: int,
+        label: str = Form(default=""),
+        user_id: str = Form(default=""),
+        new_user_name: str = Form(default=""),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        if not q.get_peer(conn, peer_id):
+            raise HTTPException(404, "peer not found")
+        clean_label = label.strip() or None
+
+        if user_id == "__new__":
+            new_name = new_user_name.strip()
+            if not new_name:
+                raise HTTPException(400, "new user name required")
+            dbmod.assign_peer_to_new_user(conn, peer_id, new_name, clean_label)
+        else:
+            if user_id == "":
+                target_user_id: int | None = None
+            else:
+                try:
+                    target_user_id = int(user_id)
+                except ValueError:
+                    raise HTTPException(400, "invalid user_id")
+                if not q.get_user(conn, target_user_id):
+                    raise HTTPException(400, "user not found")
+            dbmod.update_peer(conn, peer_id, label=clean_label, user_id=target_user_id)
+
+        return RedirectResponse(f"/peer/{peer_id}", status_code=303)
 
     @app.get("/api/peer/{peer_id}/timeseries")
     def api_peer_ts(

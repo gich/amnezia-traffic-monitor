@@ -78,3 +78,39 @@ canvas { max-height: 320px; }
 dl.peer-meta { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; }
 dl.peer-meta dt { font-weight: 600; color: #555; }
 dl.peer-meta dd { margin: 0; word-break: break-all; }
+
+details.edit-form {
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fafafa;
+}
+details.edit-form > summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: #555;
+  user-select: none;
+}
+details.edit-form[open] > summary { margin-bottom: 0.75rem; }
+details.edit-form form { display: flex; flex-direction: column; gap: 0.6rem; max-width: 420px; }
+details.edit-form label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.9em; color: #555; }
+details.edit-form input[type=text],
+details.edit-form select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+details.edit-form button {
+  align-self: flex-start;
+  padding: 0.35rem 1rem;
+  border: 1px solid #0366d6;
+  background: #0366d6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+details.edit-form button:hover { background: #024ea2; border-color: #024ea2; }

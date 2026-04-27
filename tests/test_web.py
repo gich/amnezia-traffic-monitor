@@ -125,3 +125,103 @@ def test_static_assets_served(client):
     assert client.get("/static/style.css").status_code == 200
     assert client.get("/static/sort.js").status_code == 200
     assert client.get("/static/chart-init.js").status_code == 200
+
+
+def test_edit_user_renames(client):
+    r = client.post("/user/1/edit", data={"name": "Vasiliy", "comment": "renamed"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/user/1"
+    page = client.get("/user/1").text
+    assert "Vasiliy" in page
+    assert "renamed" in page
+
+
+def test_edit_user_rejects_empty_name(client):
+    r = client.post("/user/1/edit", data={"name": "   ", "comment": ""}, follow_redirects=False)
+    assert r.status_code == 400
+
+
+def test_edit_user_404_for_unknown(client):
+    r = client.post("/user/999/edit", data={"name": "X"}, follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_edit_peer_changes_label(client):
+    import re
+    user_page = client.get("/user/1").text
+    peer_id = re.findall(r'/peer/(\d+)', user_page)[0]
+    r = client.post(
+        f"/peer/{peer_id}/edit",
+        data={"label": "iPad Pro", "user_id": "1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    page = client.get(f"/peer/{peer_id}").text
+    assert "iPad Pro" in page
+
+
+def test_edit_peer_unassigns_when_user_id_blank(client):
+    import re
+    user_page = client.get("/user/1").text
+    peer_id = re.findall(r'/peer/(\d+)', user_page)[0]
+    r = client.post(
+        f"/peer/{peer_id}/edit",
+        data={"label": "iPhone", "user_id": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    # peer should now be unassigned — no longer appear on user 1's page
+    page = client.get("/user/1").text
+    assert f'/peer/{peer_id}' not in page
+
+
+def test_edit_peer_creates_new_user_and_assigns(client):
+    # the orphan peer (label=unassigned, no user)
+    peers_page = client.get("/peers").text
+    import re
+    # find the peer id that is rendered as unassigned
+    # easier: find pubkey "orphan" and trace back via API; instead, query DB via internal route
+    # but TestClient doesn't expose that. Use the unassigned class from HTML.
+    matches = re.findall(r'<tr class="unassigned">.*?/peer/(\d+)', peers_page, re.DOTALL)
+    assert matches, "expected at least one unassigned peer in /peers"
+    peer_id = matches[0]
+    r = client.post(
+        f"/peer/{peer_id}/edit",
+        data={"label": "MyPhone", "user_id": "__new__", "new_user_name": "Kolya"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    # the new user should appear on the index
+    index = client.get("/").text
+    assert "Kolya" in index
+
+
+def test_edit_peer_create_new_requires_name(client):
+    import re
+    peer_id = re.findall(r'/peer/(\d+)', client.get("/peers").text)[0]
+    r = client.post(
+        f"/peer/{peer_id}/edit",
+        data={"label": "x", "user_id": "__new__", "new_user_name": "  "},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_edit_peer_rejects_unknown_user_id(client):
+    import re
+    peer_id = re.findall(r'/peer/(\d+)', client.get("/peers").text)[0]
+    r = client.post(
+        f"/peer/{peer_id}/edit",
+        data={"label": "x", "user_id": "9999"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_peer_page_includes_user_dropdown_with_existing_users(client):
+    import re
+    peer_id = re.findall(r'/peer/(\d+)', client.get("/peers").text)[0]
+    page = client.get(f"/peer/{peer_id}").text
+    assert "Vasya" in page
+    assert "Petya" in page
+    assert "+ Create new user" in page

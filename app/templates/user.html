@@ -5,6 +5,15 @@
 <h1>{{ user.name }}</h1>
 {% if user.comment %}<p class="comment">{{ user.comment }}</p>{% endif %}
 
+<details class="edit-form">
+  <summary>Edit user</summary>
+  <form method="post" action="/user/{{ user.id }}/edit">
+    <label>Name <input type="text" name="name" value="{{ user.name }}" required></label>
+    <label>Comment <input type="text" name="comment" value="{{ user.comment or '' }}"></label>
+    <button type="submit">Save</button>
+  </form>
+</details>
+
 <h2>Traffic</h2>
 <div class="window-switcher" data-target="user-chart" data-source-url="/api/user/{{ user.id }}/timeseries">
   <button data-window="24h" class="active">24 hours</button>

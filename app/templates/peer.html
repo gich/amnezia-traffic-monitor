@@ -9,6 +9,27 @@
   {% endif %}
 </p>
 <h1>{{ peer.label or 'unnamed peer' }}</h1>
+
+<details class="edit-form" {% if not peer.user_id %}open{% endif %}>
+  <summary>Edit peer</summary>
+  <form method="post" action="/peer/{{ peer.id }}/edit">
+    <label>Label <input type="text" name="label" value="{{ peer.label or '' }}" placeholder="e.g. iPhone"></label>
+    <label>User
+      <select name="user_id" data-toggle-input="new-user-name-wrap" data-toggle-value="__new__">
+        <option value="" {% if not peer.user_id %}selected{% endif %}>(unassigned)</option>
+        {% for u in all_users %}
+          <option value="{{ u.id }}" {% if peer.user_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+        {% endfor %}
+        <option value="__new__">+ Create new user…</option>
+      </select>
+    </label>
+    <label id="new-user-name-wrap" style="display:none">
+      New user name <input type="text" name="new_user_name" id="new-user-name" placeholder="e.g. Vasya">
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</details>
+
 <dl class="peer-meta">
   <dt>User</dt>
   <dd>
@@ -36,4 +57,18 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="/static/chart-init.js"></script>
+<script>
+  document.querySelectorAll('select[data-toggle-input]').forEach((sel) => {
+    const wrap = document.getElementById(sel.dataset.toggleInput);
+    const triggerValue = sel.dataset.toggleValue;
+    const inputs = wrap.querySelectorAll('input');
+    function update() {
+      const show = sel.value === triggerValue;
+      wrap.style.display = show ? '' : 'none';
+      inputs.forEach((i) => { i.required = show; });
+    }
+    sel.addEventListener('change', update);
+    update();
+  });
+</script>
 {% endblock %}

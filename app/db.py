@@ -134,6 +134,56 @@ def write_tick(
         raise
 
 
+def update_user(conn: sqlite3.Connection, user_id: int, name: str, comment: str | None) -> None:
+    conn.execute(
+        "UPDATE users SET name = ?, comment = ? WHERE id = ?",
+        (name, comment, user_id),
+    )
+
+
+def create_user(conn: sqlite3.Connection, name: str, comment: str | None = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO users (name, comment) VALUES (?, ?)", (name, comment)
+    )
+    return cur.lastrowid
+
+
+def update_peer(
+    conn: sqlite3.Connection,
+    peer_id: int,
+    label: str | None,
+    user_id: int | None,
+) -> None:
+    conn.execute(
+        "UPDATE peers SET label = ?, user_id = ? WHERE id = ?",
+        (label, user_id, peer_id),
+    )
+
+
+def assign_peer_to_new_user(
+    conn: sqlite3.Connection,
+    peer_id: int,
+    user_name: str,
+    label: str | None,
+) -> int:
+    """Atomically create a user and assign the given peer to them."""
+    conn.execute("BEGIN")
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (name) VALUES (?)", (user_name,)
+        )
+        user_id = cur.lastrowid
+        conn.execute(
+            "UPDATE peers SET user_id = ?, label = ? WHERE id = ?",
+            (user_id, label, peer_id),
+        )
+        conn.execute("COMMIT")
+        return user_id
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
 def cleanup_old_samples(conn: sqlite3.Connection, retention_days: int) -> int:
     cur = conn.execute(
         "DELETE FROM peer_samples WHERE ts < datetime('now', ?)",
