@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ peer.label or 'peer' }} — Amnezia Traffic Monitor{% endblock %}
+{% block content %}
+<p>
+  {% if peer.user_id %}
+    <a href="/user/{{ peer.user_id }}">← {{ peer.user_name }}</a>
+  {% else %}
+    <a href="/peers">← All peers</a>
+  {% endif %}
+</p>
+<h1>{{ peer.label or 'unnamed peer' }}</h1>
+<dl class="peer-meta">
+  <dt>User</dt>
+  <dd>
+    {% if peer.user_id %}
+      <a href="/user/{{ peer.user_id }}">{{ peer.user_name }}</a>
+    {% else %}
+      (unassigned)
+    {% endif %}
+  </dd>
+  <dt>Public key</dt><dd class="peer-pubkey">{{ peer.pubkey }}</dd>
+  <dt>Downloaded (lifetime)</dt><dd>{{ peer.lifetime_tx | bytes }}</dd>
+  <dt>Uploaded (lifetime)</dt><dd>{{ peer.lifetime_rx | bytes }}</dd>
+  <dt>Last handshake</dt><dd>{{ peer.last_handshake_at | handshake }}</dd>
+  <dt>Last seen by collector</dt><dd>{{ peer.last_seen_at or 'never' }}</dd>
+</dl>
+
+<h2>Traffic</h2>
+<div class="window-switcher" data-target="peer-chart" data-source-url="/api/peer/{{ peer.id }}/timeseries">
+  <button data-window="24h" class="active">24 hours</button>
+  <button data-window="7d">7 days</button>
+  <button data-window="30d">30 days</button>
+</div>
+<canvas id="peer-chart"></canvas>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="/static/chart-init.js"></script>
+{% endblock %}

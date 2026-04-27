@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Users — Amnezia Traffic Monitor{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if not users and not unassigned %}
+<p class="empty">No data yet. The collector hasn't seen any peers, or no users have been created.</p>
+{% else %}
+<table class="sortable">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th data-sort="number">Peers</th>
+      <th data-sort="number">Downloaded</th>
+      <th data-sort="number">Uploaded</th>
+      <th data-sort="number">Last handshake</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td><a href="/user/{{ u.id }}">{{ u.name }}</a></td>
+      <td data-value="{{ u.peers }}">{{ u.peers }}</td>
+      <td data-value="{{ u.lifetime_tx }}">{{ u.lifetime_tx | bytes }}</td>
+      <td data-value="{{ u.lifetime_rx }}">{{ u.lifetime_rx | bytes }}</td>
+      <td data-value="{{ u.last_handshake_at or 0 }}">{{ u.last_handshake_at | handshake }}</td>
+    </tr>
+    {% endfor %}
+    {% if unassigned %}
+    <tr class="unassigned">
+      <td><a href="/peers">(unassigned)</a></td>
+      <td data-value="{{ unassigned.peers }}">{{ unassigned.peers }}</td>
+      <td data-value="{{ unassigned.lifetime_tx }}">{{ unassigned.lifetime_tx | bytes }}</td>
+      <td data-value="{{ unassigned.lifetime_rx }}">{{ unassigned.lifetime_rx | bytes }}</td>
+      <td data-value="{{ unassigned.last_handshake_at or 0 }}">{{ unassigned.last_handshake_at | handshake }}</td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/sort.js"></script>{% endblock %}

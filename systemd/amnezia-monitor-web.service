@@ -1,0 +1,16 @@
+[Unit]
+Description=AmneziaWG traffic monitor web UI
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/amnezia-monitor
+ExecStart=/opt/amnezia-monitor/.venv/bin/python -m app.web --config /opt/amnezia-monitor/config.toml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
