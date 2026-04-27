@@ -224,7 +224,7 @@ sqlite3 /var/lib/amnezia-monitor/monitor.db "SELECT * FROM peer_totals LIMIT 5"
 git clone https://github.com/<USERNAME>/amnezia-traffic-monitor
 cd amnezia-traffic-monitor
 python -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/pip install -r requirements.txt pytest
 .venv/bin/pytest tests/ -v
 ```
 
