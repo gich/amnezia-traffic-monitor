@@ -58,8 +58,12 @@ else
 fi
 
 if ask "4/5  Install and start systemd units (amnezia-monitor-collector, amnezia-monitor-web)?"; then
-    cp "$PROJECT_ROOT/systemd/amnezia-monitor-collector.service" /etc/systemd/system/
-    cp "$PROJECT_ROOT/systemd/amnezia-monitor-web.service"       /etc/systemd/system/
+    # Unit files reference /opt/amnezia-monitor by default — rewrite to actual project root.
+    for unit in amnezia-monitor-collector.service amnezia-monitor-web.service; do
+        sed "s|/opt/amnezia-monitor|$PROJECT_ROOT|g" \
+            "$PROJECT_ROOT/systemd/$unit" \
+            > "/etc/systemd/system/$unit"
+    done
     systemctl daemon-reload
     systemctl enable --now amnezia-monitor-collector
     systemctl enable --now amnezia-monitor-web

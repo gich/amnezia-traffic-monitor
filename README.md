@@ -47,6 +47,8 @@ git clone https://github.com/<USERNAME>/amnezia-traffic-monitor.git /opt/amnezia
 cd /opt/amnezia-monitor
 ```
 
+The path can be anything (e.g. `/home/admin/monitor`, `/srv/amnezia-monitor`) — `install.sh` rewrites the systemd unit files to point at whatever directory you cloned into. `/opt/amnezia-monitor` is just the convention.
+
 For a private repo, add a deploy key on the VPS and register its public part under GitHub Settings → Deploy keys.
 
 ### 2. Run the interactive installer
