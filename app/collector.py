@@ -54,7 +54,7 @@ def process_observations(
 ) -> None:
     """For each observed peer, compute the delta against persisted state and write it back."""
     for s in samples:
-        peer_id = dbmod.get_or_create_peer(conn, s.pubkey)
+        peer_id = dbmod.get_or_create_peer(conn, s.pubkey, allowed_ips=s.allowed_ips)
         prev = dbmod.get_totals(conn, peer_id)
         tick = compute_tick(prev, s.rx_bytes, s.tx_bytes)
         if tick.reset_detected:

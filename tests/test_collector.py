@@ -148,6 +148,30 @@ def test_unknown_pubkey_auto_creates_peer():
     assert row["user_id"] is None
 
 
+def test_collector_persists_allowed_ips_for_new_peer():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    process_observations(
+        conn,
+        [PeerSample("k1=", rx_bytes=10, tx_bytes=20, latest_handshake=None,
+                    allowed_ips="10.8.1.5/32")],
+        datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc),
+    )
+    row = conn.execute("SELECT allowed_ips FROM peers WHERE pubkey='k1='").fetchone()
+    assert row["allowed_ips"] == "10.8.1.5/32"
+
+
+def test_collector_updates_allowed_ips_when_changed():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    t1 = datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc)
+    t2 = datetime(2026, 4, 27, 12, 0, 30, tzinfo=timezone.utc)
+    process_observations(conn, [PeerSample("k=", 0, 0, None, allowed_ips="10.8.1.2/32")], t1)
+    process_observations(conn, [PeerSample("k=", 0, 0, None, allowed_ips="10.8.1.99/32")], t2)
+    row = conn.execute("SELECT allowed_ips FROM peers").fetchone()
+    assert row["allowed_ips"] == "10.8.1.99/32"
+
+
 def test_zero_delta_does_not_create_sample_row():
     """No traffic in this interval → don't pollute peer_samples with empty rows."""
     conn = dbmod.connect(":memory:")

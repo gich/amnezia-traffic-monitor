@@ -53,6 +53,7 @@ tr.unassigned td, tr.unassigned a { color: #888; font-style: italic; }
 tr.unassigned a { font-style: normal; }
 
 .peer-pubkey { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.85em; color: #555; }
+.peer-ip { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9em; color: #444; white-space: nowrap; }
 .empty { color: #888; }
 .comment { color: #666; }
 

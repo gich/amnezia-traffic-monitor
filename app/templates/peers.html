@@ -10,6 +10,7 @@
     <tr>
       <th>User</th>
       <th>Label</th>
+      <th>IP</th>
       <th>Pubkey</th>
       <th data-sort="number">Downloaded</th>
       <th data-sort="number">Uploaded</th>
@@ -27,6 +28,7 @@
         {% endif %}
       </td>
       <td><a href="/peer/{{ p.id }}">{{ p.label or '-' }}</a></td>
+      <td class="peer-ip">{{ p.allowed_ips or '-' }}</td>
       <td class="peer-pubkey">{{ p.pubkey[:16] }}…</td>
       <td data-value="{{ p.lifetime_tx }}">{{ p.lifetime_tx | bytes }}</td>
       <td data-value="{{ p.lifetime_rx }}">{{ p.lifetime_rx | bytes }}</td>

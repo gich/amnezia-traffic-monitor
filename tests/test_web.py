@@ -65,6 +65,32 @@ def test_peers_lists_all_peers(client):
     assert "orphan=" in r.text or "orphan" in r.text
 
 
+def test_peers_page_shows_allowed_ips(tmp_path):
+    db_path = str(tmp_path / "ips.db")
+    conn = dbmod.connect(db_path)
+    dbmod.init_schema(conn)
+    process_observations(conn, [
+        PeerSample("k1=", 10, 20, None, allowed_ips="10.8.1.42/32"),
+    ], datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc))
+    conn.close()
+    text = TestClient(create_app(db_path)).get("/peers").text
+    assert "10.8.1.42/32" in text
+
+
+def test_peer_page_shows_allowed_ips(tmp_path):
+    db_path = str(tmp_path / "ips.db")
+    conn = dbmod.connect(db_path)
+    dbmod.init_schema(conn)
+    process_observations(conn, [
+        PeerSample("k1=", 10, 20, None, allowed_ips="10.8.1.42/32"),
+    ], datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc))
+    peer_id = conn.execute("SELECT id FROM peers").fetchone()["id"]
+    conn.close()
+    text = TestClient(create_app(db_path)).get(f"/peer/{peer_id}").text
+    assert "10.8.1.42/32" in text
+    assert "Allowed IPs" in text
+
+
 def test_user_detail_shows_peers(client):
     r = client.get("/user/1")
     assert r.status_code == 200

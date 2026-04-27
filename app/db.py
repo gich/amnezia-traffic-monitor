@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS peers (
     user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     pubkey      TEXT NOT NULL UNIQUE,
     label       TEXT,
+    allowed_ips TEXT,
     active      INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -58,15 +59,35 @@ def connect(path: str) -> sqlite3.Connection:
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
 
 
-def get_or_create_peer(conn: sqlite3.Connection, pubkey: str) -> int:
-    row = conn.execute("SELECT id FROM peers WHERE pubkey = ?", (pubkey,)).fetchone()
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent in-place migrations for already-deployed databases."""
+    peer_cols = {r[1] for r in conn.execute("PRAGMA table_info(peers)").fetchall()}
+    if "allowed_ips" not in peer_cols:
+        conn.execute("ALTER TABLE peers ADD COLUMN allowed_ips TEXT")
+
+
+def get_or_create_peer(
+    conn: sqlite3.Connection,
+    pubkey: str,
+    allowed_ips: str | None = None,
+) -> int:
+    row = conn.execute(
+        "SELECT id, allowed_ips FROM peers WHERE pubkey = ?", (pubkey,)
+    ).fetchone()
     if row:
+        # Refresh allowed_ips if it changed (peer reconfigured) or wasn't set yet.
+        if allowed_ips and allowed_ips != row["allowed_ips"]:
+            conn.execute(
+                "UPDATE peers SET allowed_ips = ? WHERE id = ?",
+                (allowed_ips, row["id"]),
+            )
         return row["id"]
     cur = conn.execute(
-        "INSERT INTO peers (pubkey, label) VALUES (?, ?)",
-        (pubkey, "unassigned"),
+        "INSERT INTO peers (pubkey, label, allowed_ips) VALUES (?, ?, ?)",
+        (pubkey, "unassigned", allowed_ips),
     )
     peer_id = cur.lastrowid
     conn.execute("INSERT INTO peer_totals (peer_id) VALUES (?)", (peer_id,))
