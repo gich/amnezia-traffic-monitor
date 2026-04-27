@@ -3,6 +3,34 @@ import subprocess
 from .models import PeerSample
 
 
+def list_docker_containers() -> list[str]:
+    """Names of currently running docker containers (one per line of `docker ps`)."""
+    proc = subprocess.run(
+        ["docker", "ps", "--format", "{{.Names}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    return [n.strip() for n in proc.stdout.splitlines() if n.strip()]
+
+
+def list_interfaces(container: str, binary: str = "awg") -> list[str]:
+    """AmneziaWG interface names visible inside the given container.
+
+    `awg show interfaces` outputs a single line of space-separated interface names,
+    or an empty string if no interfaces are configured.
+    """
+    proc = subprocess.run(
+        ["docker", "exec", container, binary, "show", "interfaces"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    return proc.stdout.split()
+
+
 def fetch_dump(container: str, interface: str, binary: str = "awg") -> str:
     """Run `docker exec <container> <binary> show <interface> dump` and return stdout."""
     proc = subprocess.run(

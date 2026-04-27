@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Settings — Amnezia Traffic Monitor{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<form method="post" action="/settings" class="settings-form">
+  <fieldset>
+    <legend>AmneziaWG source</legend>
+    <p class="hint">
+      Which docker container and interface the collector is watching.
+      Lists are populated live from <code>docker ps</code> and
+      <code>{{ binary }} show interfaces</code>.
+    </p>
+
+    <p class="current">
+      Current: <code>{{ current_container }}</code> / <code>{{ current_interface }}</code>
+    </p>
+
+    <label>Container
+      <select name="awg_container" id="container-select" required></select>
+    </label>
+
+    <label>Interface
+      <select name="awg_interface" id="interface-select" required></select>
+    </label>
+
+    <button type="submit">Save</button>
+  </fieldset>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const containerSelect = document.getElementById("container-select");
+  const interfaceSelect = document.getElementById("interface-select");
+  const current = {{ current_json | safe }};
+
+  function placeholder(select, text) {
+    select.innerHTML = "";
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = text;
+    opt.disabled = true;
+    opt.selected = true;
+    select.appendChild(opt);
+  }
+
+  function fillOptions(select, items, currentValue) {
+    select.innerHTML = "";
+    let matched = false;
+    for (const value of items) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = value;
+      if (value === currentValue) {
+        opt.selected = true;
+        matched = true;
+      }
+      select.appendChild(opt);
+    }
+    if (!matched && items.length) select.options[0].selected = true;
+  }
+
+  async function loadContainers() {
+    placeholder(containerSelect, "loading…");
+    try {
+      const res = await fetch("/api/docker/containers");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const { containers } = await res.json();
+      if (!containers.length) {
+        placeholder(containerSelect, "(no running containers)");
+        placeholder(interfaceSelect, "(pick container first)");
+        return;
+      }
+      fillOptions(containerSelect, containers, current.container);
+      loadInterfaces(containerSelect.value);
+    } catch (e) {
+      placeholder(containerSelect, "(error: " + e.message + ")");
+    }
+  }
+
+  async function loadInterfaces(container) {
+    placeholder(interfaceSelect, "loading…");
+    if (!container) {
+      placeholder(interfaceSelect, "(pick container first)");
+      return;
+    }
+    try {
+      const res = await fetch(
+        "/api/docker/containers/" + encodeURIComponent(container) + "/interfaces"
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        placeholder(interfaceSelect, "(" + (data.detail || "error") + ")");
+        return;
+      }
+      const { interfaces } = data;
+      if (!interfaces.length) {
+        placeholder(interfaceSelect, "(no AmneziaWG interfaces here)");
+        return;
+      }
+      fillOptions(interfaceSelect, interfaces, current.interface);
+    } catch (e) {
+      placeholder(interfaceSelect, "(error: " + e.message + ")");
+    }
+  }
+
+  containerSelect.addEventListener("change", (e) => loadInterfaces(e.target.value));
+  loadContainers();
+</script>
+{% endblock %}

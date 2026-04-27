@@ -1,4 +1,5 @@
 import argparse
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,9 +9,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import awg as awgmod
 from . import db as dbmod
 from . import queries as q
-from .config import load_config
+from .config import Config, load_config
 
 
 _BASE = Path(__file__).resolve().parent
@@ -41,7 +43,7 @@ def _fmt_handshake(unix_ts: int | None) -> str:
     return f"{secs // 86400}d ago"
 
 
-def create_app(db_path: str) -> FastAPI:
+def create_app(cfg: Config) -> FastAPI:
     app = FastAPI(title="Amnezia Traffic Monitor", docs_url=None, redoc_url=None)
     app.mount("/static", StaticFiles(directory=_BASE / "static"), name="static")
 
@@ -50,7 +52,7 @@ def create_app(db_path: str) -> FastAPI:
     templates.env.filters["handshake"] = _fmt_handshake
 
     def get_conn():
-        conn = dbmod.connect(db_path)
+        conn = dbmod.connect(cfg.db.path)
         try:
             yield conn
         finally:
@@ -146,6 +148,66 @@ def create_app(db_path: str) -> FastAPI:
 
         return RedirectResponse(f"/peer/{peer_id}", status_code=303)
 
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
+        container, interface, binary = dbmod.get_active_source(conn, cfg)
+        return templates.TemplateResponse(
+            request,
+            "settings.html",
+            {
+                "current_container": container,
+                "current_interface": interface,
+                "binary": binary,
+                "current_json": json.dumps({"container": container, "interface": interface}),
+            },
+        )
+
+    @app.post("/settings")
+    def save_settings(
+        awg_container: str = Form(...),
+        awg_interface: str = Form(...),
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        try:
+            running = awgmod.list_docker_containers()
+        except Exception as e:
+            raise HTTPException(500, f"docker not available: {e}")
+        if awg_container not in running:
+            raise HTTPException(400, f"container '{awg_container}' is not running")
+        binary = dbmod.get_setting(conn, "awg_binary") or cfg.awg.binary
+        try:
+            ifaces = awgmod.list_interfaces(awg_container, binary)
+        except Exception as e:
+            raise HTTPException(400, f"can't list interfaces in '{awg_container}': {e}")
+        if awg_interface not in ifaces:
+            raise HTTPException(
+                400, f"interface '{awg_interface}' not found in '{awg_container}'"
+            )
+        dbmod.set_setting(conn, "awg_container", awg_container)
+        dbmod.set_setting(conn, "awg_interface", awg_interface)
+        return RedirectResponse("/settings", status_code=303)
+
+    @app.get("/api/docker/containers")
+    def api_list_containers():
+        try:
+            return {"containers": awgmod.list_docker_containers()}
+        except Exception as e:
+            raise HTTPException(500, f"docker not available: {e}")
+
+    @app.get("/api/docker/containers/{name}/interfaces")
+    def api_list_interfaces(name: str, conn: sqlite3.Connection = Depends(get_conn)):
+        try:
+            running = awgmod.list_docker_containers()
+        except Exception as e:
+            raise HTTPException(500, f"docker not available: {e}")
+        if name not in running:
+            raise HTTPException(400, "unknown or stopped container")
+        binary = dbmod.get_setting(conn, "awg_binary") or cfg.awg.binary
+        try:
+            return {"interfaces": awgmod.list_interfaces(name, binary)}
+        except Exception as e:
+            raise HTTPException(400, f"can't list interfaces: {e}")
+
     @app.get("/api/peer/{peer_id}/timeseries")
     def api_peer_ts(
         peer_id: int,
@@ -178,7 +240,7 @@ def main() -> None:
     parser.add_argument("--config", default="config.toml")
     args = parser.parse_args()
     cfg = load_config(args.config)
-    app = create_app(cfg.db.path)
+    app = create_app(cfg)
     uvicorn.run(app, host=cfg.web.host, port=cfg.web.port, log_level="info")
 
 

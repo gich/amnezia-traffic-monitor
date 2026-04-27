@@ -12,8 +12,18 @@ from fastapi.testclient import TestClient
 
 from app import db as dbmod
 from app.collector import process_observations
+from app.config import AwgConfig, CollectorConfig, Config, DbConfig, WebConfig
 from app.models import PeerSample
 from app.web import create_app
+
+
+def make_cfg(db_path: str, container: str = "amnezia-awg2", interface: str = "wg0") -> Config:
+    return Config(
+        awg=AwgConfig(container=container, interface=interface, binary="awg", config_path=""),
+        collector=CollectorConfig(poll_interval_seconds=30, sample_retention_days=90),
+        db=DbConfig(path=db_path),
+        web=WebConfig(host="127.0.0.1", port=8080),
+    )
 
 
 @pytest.fixture
@@ -33,7 +43,7 @@ def client(tmp_path):
     conn.execute("UPDATE peers SET user_id=1, label='Mac' WHERE pubkey='v2='")
     conn.execute("UPDATE peers SET user_id=2, label='Desktop' WHERE pubkey='p1='")
     conn.close()
-    return TestClient(create_app(db_path))
+    return TestClient(create_app(make_cfg(db_path)))
 
 
 def test_index_lists_users_and_unassigned(client):
@@ -49,7 +59,7 @@ def test_index_renders_with_no_users(tmp_path):
     conn = dbmod.connect(db_path)
     dbmod.init_schema(conn)
     conn.close()
-    app = create_app(db_path)
+    app = create_app(make_cfg(db_path))
     r = TestClient(app).get("/")
     assert r.status_code == 200
     assert "No data yet" in r.text
@@ -73,7 +83,7 @@ def test_peers_page_shows_allowed_ips(tmp_path):
         PeerSample("k1=", 10, 20, None, allowed_ips="10.8.1.42/32"),
     ], datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc))
     conn.close()
-    text = TestClient(create_app(db_path)).get("/peers").text
+    text = TestClient(create_app(make_cfg(db_path))).get("/peers").text
     assert "10.8.1.42/32" in text
 
 
@@ -86,7 +96,7 @@ def test_peer_page_shows_allowed_ips(tmp_path):
     ], datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc))
     peer_id = conn.execute("SELECT id FROM peers").fetchone()["id"]
     conn.close()
-    text = TestClient(create_app(db_path)).get(f"/peer/{peer_id}").text
+    text = TestClient(create_app(make_cfg(db_path))).get(f"/peer/{peer_id}").text
     assert "10.8.1.42/32" in text
     assert "Allowed IPs" in text
 
@@ -242,6 +252,105 @@ def test_edit_peer_rejects_unknown_user_id(client):
         follow_redirects=False,
     )
     assert r.status_code == 400
+
+
+def test_settings_page_renders_with_current_values(client):
+    r = client.get("/settings")
+    assert r.status_code == 200
+    # config defaults from make_cfg are exposed as "current"
+    assert "amnezia-awg2" in r.text
+    assert "wg0" in r.text
+
+
+def test_settings_page_renders_db_value_when_set(tmp_path):
+    db_path = str(tmp_path / "s.db")
+    conn = dbmod.connect(db_path)
+    dbmod.init_schema(conn)
+    dbmod.set_setting(conn, "awg_container", "custom-container")
+    dbmod.set_setting(conn, "awg_interface", "wg42")
+    conn.close()
+    text = TestClient(create_app(make_cfg(db_path))).get("/settings").text
+    assert "custom-container" in text
+    assert "wg42" in text
+
+
+def test_api_list_containers_returns_running_containers(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2", "nginx"])
+    r = client.get("/api/docker/containers")
+    assert r.status_code == 200
+    assert r.json() == {"containers": ["amnezia-awg2", "nginx"]}
+
+
+def test_api_list_containers_500_when_docker_broken(client, monkeypatch):
+    from app import awg as awgmod
+    def boom():
+        raise RuntimeError("docker daemon down")
+    monkeypatch.setattr(awgmod, "list_docker_containers", boom)
+    r = client.get("/api/docker/containers")
+    assert r.status_code == 500
+
+
+def test_api_list_interfaces_returns_interfaces(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2"])
+    monkeypatch.setattr(awgmod, "list_interfaces", lambda c, b="awg": ["wg0", "wg1"])
+    r = client.get("/api/docker/containers/amnezia-awg2/interfaces")
+    assert r.status_code == 200
+    assert r.json() == {"interfaces": ["wg0", "wg1"]}
+
+
+def test_api_list_interfaces_400_for_unknown_container(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2"])
+    r = client.get("/api/docker/containers/imaginary/interfaces")
+    assert r.status_code == 400
+
+
+def test_post_settings_saves_valid_pair(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2", "other"])
+    monkeypatch.setattr(awgmod, "list_interfaces", lambda c, b="awg": ["wg0", "wg7"])
+
+    r = client.post(
+        "/settings",
+        data={"awg_container": "other", "awg_interface": "wg7"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    # Settings now reflect saved values
+    settings_text = client.get("/settings").text
+    assert "other" in settings_text
+    assert "wg7" in settings_text
+
+
+def test_post_settings_rejects_unknown_container(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2"])
+    r = client.post(
+        "/settings",
+        data={"awg_container": "imaginary", "awg_interface": "wg0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_post_settings_rejects_unknown_interface(client, monkeypatch):
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2"])
+    monkeypatch.setattr(awgmod, "list_interfaces", lambda c, b="awg": ["wg0"])
+    r = client.post(
+        "/settings",
+        data={"awg_container": "amnezia-awg2", "awg_interface": "wg999"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_settings_link_in_nav(client):
+    page = client.get("/").text
+    assert 'href="/settings"' in page
 
 
 def test_peer_page_includes_user_dropdown_with_existing_users(client):

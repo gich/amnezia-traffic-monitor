@@ -43,6 +43,12 @@ CREATE TABLE IF NOT EXISTS peer_samples (
 
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON peer_samples(ts);
 CREATE INDEX IF NOT EXISTS idx_peers_user ON peers(user_id);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -203,6 +209,34 @@ def assign_peer_to_new_user(
     except Exception:
         conn.execute("ROLLBACK")
         raise
+
+
+def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at)
+           VALUES (?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE
+               SET value = excluded.value,
+                   updated_at = excluded.updated_at""",
+        (key, value),
+    )
+
+
+def get_active_source(conn: sqlite3.Connection, cfg) -> tuple[str, str, str]:
+    """Resolve the currently active AmneziaWG source.
+
+    Returns (container, interface, binary), preferring values from the `settings`
+    table (set via the web UI) over `config.toml` defaults.
+    """
+    container = get_setting(conn, "awg_container") or cfg.awg.container
+    interface = get_setting(conn, "awg_interface") or cfg.awg.interface
+    binary = get_setting(conn, "awg_binary") or cfg.awg.binary
+    return container, interface, binary
 
 
 def cleanup_old_samples(conn: sqlite3.Connection, retention_days: int) -> int:

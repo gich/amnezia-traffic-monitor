@@ -115,3 +115,34 @@ details.edit-form button {
   font-size: 0.95em;
 }
 details.edit-form button:hover { background: #024ea2; border-color: #024ea2; }
+
+form.settings-form fieldset {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  max-width: 520px;
+  background: #fafafa;
+}
+form.settings-form legend { padding: 0 0.4rem; font-weight: 600; color: #444; }
+form.settings-form .hint { color: #666; font-size: 0.9em; }
+form.settings-form .current { color: #444; font-size: 0.9em; }
+form.settings-form .current code { background: #eef; padding: 0.05rem 0.3rem; border-radius: 3px; }
+form.settings-form label { display: flex; flex-direction: column; gap: 0.2rem; margin: 0.6rem 0; font-size: 0.9em; color: #555; }
+form.settings-form select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+form.settings-form button {
+  margin-top: 0.5rem;
+  padding: 0.4rem 1.1rem;
+  border: 1px solid #0366d6;
+  background: #0366d6;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+form.settings-form button:hover { background: #024ea2; border-color: #024ea2; }

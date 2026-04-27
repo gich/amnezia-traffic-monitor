@@ -90,3 +90,43 @@ def test_get_or_create_peer_does_not_clear_existing_ip_with_none():
     dbmod.get_or_create_peer(conn, "k1=", allowed_ips=None)
     row = conn.execute("SELECT allowed_ips FROM peers WHERE id = ?", (peer_id,)).fetchone()
     assert row["allowed_ips"] == "10.0.0.5/32"
+
+
+def test_get_setting_returns_none_when_missing():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    assert dbmod.get_setting(conn, "anything") is None
+
+
+def test_set_setting_then_get_setting_roundtrip():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    dbmod.set_setting(conn, "k", "v1")
+    assert dbmod.get_setting(conn, "k") == "v1"
+    dbmod.set_setting(conn, "k", "v2")
+    assert dbmod.get_setting(conn, "k") == "v2"
+
+
+class _FakeCfg:
+    class awg:
+        container = "default-container"
+        interface = "wg-default"
+        binary = "awg"
+
+
+def test_get_active_source_falls_back_to_config_when_db_empty():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    container, iface, binary = dbmod.get_active_source(conn, _FakeCfg)
+    assert (container, iface, binary) == ("default-container", "wg-default", "awg")
+
+
+def test_get_active_source_prefers_db_over_config():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    dbmod.set_setting(conn, "awg_container", "from-db")
+    dbmod.set_setting(conn, "awg_interface", "wg-from-db")
+    container, iface, binary = dbmod.get_active_source(conn, _FakeCfg)
+    assert container == "from-db"
+    assert iface == "wg-from-db"
+    assert binary == "awg"  # not overridden, falls back

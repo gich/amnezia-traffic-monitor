@@ -81,15 +81,19 @@ def run_loop(config_path: str) -> None:
     dbmod.init_schema(conn)
 
     interval = cfg.collector.poll_interval_seconds
+    container, interface, _ = dbmod.get_active_source(conn, cfg)
     log.info(
-        "collector started: container=%s iface=%s interval=%ds db=%s",
-        cfg.awg.container, cfg.awg.interface, interval, cfg.db.path,
+        "collector started: source=%s/%s interval=%ds db=%s",
+        container, interface, interval, cfg.db.path,
     )
 
     last_cleanup_day: date | None = None
     while True:
         try:
-            dump = awgmod.fetch_dump(cfg.awg.container, cfg.awg.interface, cfg.awg.binary)
+            # Read source on every tick so changes from /settings take effect
+            # within one polling interval without requiring a restart.
+            container, interface, binary = dbmod.get_active_source(conn, cfg)
+            dump = awgmod.fetch_dump(container, interface, binary)
             samples = awgmod.parse_dump(dump)
             now = datetime.now(timezone.utc)
             process_observations(conn, samples, now)
