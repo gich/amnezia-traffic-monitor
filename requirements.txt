@@ -1,0 +1,5 @@
+# Runtime: collector and bootstrap need only stdlib (Python 3.11+ for tomllib).
+# Web layer (next iteration) will need:
+# fastapi
+# uvicorn[standard]
+# jinja2

@@ -1,0 +1,16 @@
+[awg]
+container = "amnezia-awg2"
+interface = "wg0"
+binary = "awg"
+config_path = "/opt/amnezia/awg/wg0.conf"
+
+[collector]
+poll_interval_seconds = 30
+sample_retention_days = 90
+
+[db]
+path = "/var/lib/amnezia-monitor/monitor.db"
+
+[web]
+host = "127.0.0.1"
+port = 8080

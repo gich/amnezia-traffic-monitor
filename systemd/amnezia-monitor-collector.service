@@ -1,0 +1,17 @@
+[Unit]
+Description=AmneziaWG traffic monitor collector
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/amnezia-monitor
+ExecStart=/usr/bin/python3 -m app.collector --config /opt/amnezia-monitor/config.toml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
