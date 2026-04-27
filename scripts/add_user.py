@@ -62,17 +62,28 @@ def _parse_since(s: str) -> str:
     return f"-{n} {_SINCE_UNITS[unit]}"
 
 
-def _print_table(headers: list[str], rows: list[list]) -> None:
+def _print_table(headers: list[str], rows: list[list], summary: list | None = None) -> None:
     str_rows = [[str(c) for c in r] for r in rows]
+    str_summary = [str(c) for c in summary] if summary is not None else None
+
     widths = [len(h) for h in headers]
     for row in str_rows:
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], len(cell))
+    if str_summary is not None:
+        for i, cell in enumerate(str_summary):
+            widths[i] = max(widths[i], len(cell))
+
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    separator = "  ".join("-" * w for w in widths)
+
     print(fmt.format(*headers))
-    print("  ".join("-" * w for w in widths))
+    print(separator)
     for row in str_rows:
         print(fmt.format(*row))
+    if str_summary is not None:
+        print(separator)
+        print(fmt.format(*str_summary))
 
 
 def cmd_create_user(conn, args):
@@ -151,6 +162,12 @@ def cmd_stats(conn, args):
             if since_mod is None:
                 row.append(_fmt_handshake(r["last_handshake"]))
             data.append(row)
+        total_peers = sum(r["peers"] or 0 for r in rows)
+        total_rx = sum(r["rx"] or 0 for r in rows)
+        total_tx = sum(r["tx"] or 0 for r in rows)
+        summary = ["TOTAL", total_peers, _fmt_bytes(total_tx), _fmt_bytes(total_rx)]
+        if since_mod is None:
+            summary.append("")
     else:
         if since_mod is None:
             rows = conn.execute(
@@ -187,8 +204,13 @@ def cmd_stats(conn, args):
             if since_mod is None:
                 row.append(_fmt_handshake(r["last_handshake"]))
             data.append(row)
+        total_rx = sum(r["rx"] or 0 for r in rows)
+        total_tx = sum(r["tx"] or 0 for r in rows)
+        summary = ["TOTAL", "", _fmt_bytes(total_tx), _fmt_bytes(total_rx)]
+        if since_mod is None:
+            summary.append("")
 
-    _print_table(headers, data)
+    _print_table(headers, data, summary=summary)
 
 
 def cmd_assign(conn, args):

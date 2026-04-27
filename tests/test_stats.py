@@ -105,6 +105,40 @@ def test_stats_per_user_with_since_runs(capsys):
     assert "down [7d]" in out
 
 
+def test_stats_per_peer_includes_total_row(capsys):
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    cmd_stats(conn, Namespace(by_user=False, since=None))
+    out = capsys.readouterr().out
+    assert "TOTAL" in out
+    # tx sum: 10000 + 5000 + 2000 = 17000 B = 16.60 KB
+    assert "16.60 KB" in out
+    # rx sum: 300 + 200 + 150 = 650 B
+    assert "650.00 B" in out
+
+
+def test_stats_per_user_total_row_sums_peer_count(capsys):
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    cmd_stats(conn, Namespace(by_user=True, since=None))
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    total_line = next(line for line in lines if "TOTAL" in line)
+    # Vasya 2 peers + Petya 1 peer = 3
+    assert " 3 " in total_line
+
+
+def test_stats_with_since_includes_total_row(capsys):
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    cmd_stats(conn, Namespace(by_user=True, since="1h"))
+    out = capsys.readouterr().out
+    assert "TOTAL" in out
+
+
 def test_stats_unassigned_peer_shown_in_per_user_view(capsys):
     conn = dbmod.connect(":memory:")
     dbmod.init_schema(conn)
