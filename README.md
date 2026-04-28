@@ -43,7 +43,7 @@ The collector runs a loop at the configured interval (30s by default), parses `a
 
 ```bash
 apt update && apt install -y git
-git clone https://github.com/<USERNAME>/amnezia-traffic-monitor.git /opt/amnezia-monitor
+git clone https://github.com/gich/amnezia-traffic-monitor.git /opt/amnezia-monitor
 cd /opt/amnezia-monitor
 ```
 

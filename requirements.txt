@@ -1,4 +1,6 @@
-# Collector and bootstrap need only stdlib (Python 3.11+ for tomllib).
+# TOML loader: tomllib is in stdlib on 3.11+, tomli is the same API as a backport.
+tomli>=2.0; python_version < "3.11"
+
 # Web UI dependencies:
 fastapi>=0.110
 uvicorn[standard]>=0.27

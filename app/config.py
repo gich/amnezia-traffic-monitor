@@ -1,4 +1,7 @@
-import tomllib
+try:
+    import tomllib  # stdlib in Python 3.11+
+except ModuleNotFoundError:
+    import tomli as tomllib  # backport for Python 3.10
 from dataclasses import dataclass
 from pathlib import Path
 
