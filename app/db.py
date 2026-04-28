@@ -243,12 +243,11 @@ def get_setting(conn: sqlite3.Connection, key: str) -> str | None:
 
 
 def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    # INSERT OR REPLACE works across all SQLite versions; ON CONFLICT...DO UPDATE
+    # would be cleaner but requires SQLite 3.24+ (Ubuntu 18.04 ships 3.22).
     conn.execute(
-        """INSERT INTO settings (key, value, updated_at)
-           VALUES (?, ?, datetime('now'))
-           ON CONFLICT(key) DO UPDATE
-               SET value = excluded.value,
-                   updated_at = excluded.updated_at""",
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) "
+        "VALUES (?, ?, datetime('now'))",
         (key, value),
     )
 
