@@ -57,13 +57,14 @@ For a private repo, add a deploy key on the VPS and register its public part und
 bash scripts/install.sh
 ```
 
-It asks y/n for five steps:
+It asks y/n for six steps:
 
 1. System packages (`python3-venv`, `nginx`, `apache2-utils`, `ufw`, `curl`)
 2. Python venv + `pip install -r requirements.txt`
 3. Create `config.toml` from the example (placeholder values — you'll set the real ones via the web UI)
 4. Install and start systemd units (collector, web)
 5. Configure UFW (allow OpenSSH, 80/tcp, 443/tcp; enable if inactive)
+6. Create basic-auth credentials at `/etc/nginx/.htpasswd-monitor` (prompts for username and password)
 
 At the end it prints service status and next-step hints. Idempotent — re-running skips already-completed work (won't overwrite `config.toml`, `daemon-reload` is harmless, etc.).
 
@@ -88,7 +89,11 @@ mkdir -p /etc/ssl/cloudflare && chmod 700 /etc/ssl/cloudflare
 nano /etc/ssl/cloudflare/monitor.example.com.pem   # paste cert
 nano /etc/ssl/cloudflare/monitor.example.com.key   # paste key
 chmod 600 /etc/ssl/cloudflare/monitor.example.com.*
+```
 
+If you didn't create `/etc/nginx/.htpasswd-monitor` during `install.sh` step 6, do it now:
+
+```bash
 htpasswd -c /etc/nginx/.htpasswd-monitor admin     # will prompt for a password
 ```
 

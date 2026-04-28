@@ -36,12 +36,12 @@ echo "=== amnezia-traffic-monitor installer ==="
 echo "Project root: $PROJECT_ROOT"
 echo
 
-if ask "1/5  Install system packages (python3-venv, nginx, apache2-utils, ufw, curl)?"; then
+if ask "1/6  Install system packages (python3-venv, nginx, apache2-utils, ufw, curl)?"; then
     apt update
     apt install -y python3-venv nginx apache2-utils ufw curl
 fi
 
-if ask "2/5  Create Python venv at $PROJECT_ROOT/.venv and install requirements?"; then
+if ask "2/6  Create Python venv at $PROJECT_ROOT/.venv and install requirements?"; then
     python3 -m venv "$PROJECT_ROOT/.venv"
     "$PROJECT_ROOT/.venv/bin/pip" install --upgrade pip
     "$PROJECT_ROOT/.venv/bin/pip" install -r "$PROJECT_ROOT/requirements.txt"
@@ -50,14 +50,14 @@ fi
 mkdir -p "$DATA_DIR"
 
 if [ -f "$PROJECT_ROOT/config.toml" ]; then
-    echo "3/5  config.toml already exists — skipping copy."
+    echo "3/6  config.toml already exists — skipping copy."
 else
-    if ask "3/5  Create config.toml from example? (defaults are placeholders; pick real container/interface via /settings later)"; then
+    if ask "3/6  Create config.toml from example? (defaults are placeholders; pick real container/interface via /settings later)"; then
         cp "$PROJECT_ROOT/config.toml.example" "$PROJECT_ROOT/config.toml"
     fi
 fi
 
-if ask "4/5  Install and start systemd units (amnezia-monitor-collector, amnezia-monitor-web)?"; then
+if ask "4/6  Install and start systemd units (amnezia-monitor-collector, amnezia-monitor-web)?"; then
     # Unit files reference /opt/amnezia-monitor by default — rewrite to actual project root.
     for unit in amnezia-monitor-collector.service amnezia-monitor-web.service; do
         sed "s|/opt/amnezia-monitor|$PROJECT_ROOT|g" \
@@ -70,12 +70,30 @@ if ask "4/5  Install and start systemd units (amnezia-monitor-collector, amnezia
     sleep 1
 fi
 
-if ask "5/5  Configure UFW (allow OpenSSH, 80/tcp, 443/tcp; enable if inactive)?"; then
+if ask "5/6  Configure UFW (allow OpenSSH, 80/tcp, 443/tcp; enable if inactive)?"; then
     ufw allow OpenSSH || true
     ufw allow 80/tcp
     ufw allow 443/tcp
     if ! ufw status | grep -q "Status: active"; then
         ufw --force enable
+    fi
+fi
+
+if ask "6/6  Set up basic-auth credentials for the admin web UI (htpasswd)?"; then
+    if ! command -v htpasswd >/dev/null; then
+        echo "  htpasswd not found — install apache2-utils first (step 1)"
+    else
+        HTPASSWD_FILE="/etc/nginx/.htpasswd-monitor"
+        do_create=1
+        if [ -f "$HTPASSWD_FILE" ]; then
+            ask "  $HTPASSWD_FILE already exists. Overwrite?" "n" || do_create=0
+        fi
+        if [ "$do_create" = "1" ]; then
+            read -p "  Username [admin]: " -r user
+            user="${user:-admin}"
+            htpasswd -c "$HTPASSWD_FILE" "$user"
+            echo "  saved. Reference in nginx with: auth_basic_user_file $HTPASSWD_FILE;"
+        fi
     fi
 fi
 
