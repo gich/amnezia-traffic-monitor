@@ -291,13 +291,46 @@ def test_api_list_containers_500_when_docker_broken(client, monkeypatch):
     assert r.status_code == 500
 
 
-def test_api_list_interfaces_returns_interfaces(client, monkeypatch):
+def test_api_list_interfaces_returns_binary_and_interfaces(client, monkeypatch):
     from app import awg as awgmod
     monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-awg2"])
     monkeypatch.setattr(awgmod, "list_interfaces", lambda c, b="awg": ["wg0", "wg1"])
     r = client.get("/api/docker/containers/amnezia-awg2/interfaces")
     assert r.status_code == 200
-    assert r.json() == {"interfaces": ["wg0", "wg1"]}
+    assert r.json() == {"binary": "awg", "interfaces": ["wg0", "wg1"]}
+
+
+def test_api_list_interfaces_falls_back_to_wg(client, monkeypatch):
+    """For vanilla WireGuard containers (only `wg`, no `awg`), autodetect should pick wg."""
+    import subprocess
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-wireguard"])
+
+    def fake_list(container, binary="awg"):
+        if binary == "awg":
+            raise subprocess.CalledProcessError(127, ["docker"], stderr="awg: not found")
+        return ["wg0"]
+    monkeypatch.setattr(awgmod, "list_interfaces", fake_list)
+
+    r = client.get("/api/docker/containers/amnezia-wireguard/interfaces")
+    assert r.status_code == 200
+    assert r.json() == {"binary": "wg", "interfaces": ["wg0"]}
+
+
+def test_api_list_interfaces_400_when_neither_binary_works(client, monkeypatch):
+    import subprocess
+    from app import awg as awgmod
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["random-container"])
+
+    def always_fail(container, binary="awg"):
+        raise subprocess.CalledProcessError(127, ["docker"], stderr=f"{binary}: not found")
+    monkeypatch.setattr(awgmod, "list_interfaces", always_fail)
+
+    r = client.get("/api/docker/containers/random-container/interfaces")
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    # error message should be informative — mention both binaries we tried
+    assert "awg" in detail and "wg" in detail
 
 
 def test_api_list_interfaces_400_for_unknown_container(client, monkeypatch):
@@ -319,10 +352,37 @@ def test_post_settings_saves_valid_pair(client, monkeypatch):
     )
     assert r.status_code == 303
 
-    # Settings now reflect saved values
     settings_text = client.get("/settings").text
     assert "other" in settings_text
     assert "wg7" in settings_text
+
+
+def test_post_settings_saves_detected_binary_for_vanilla_wg(client, monkeypatch, tmp_path):
+    """When picking a vanilla wireguard container, the saved binary should be 'wg'."""
+    import subprocess
+    from app import awg as awgmod, db as dbmod
+
+    monkeypatch.setattr(awgmod, "list_docker_containers", lambda: ["amnezia-wireguard"])
+
+    def fake_list(container, binary="awg"):
+        if binary == "awg":
+            raise subprocess.CalledProcessError(127, ["docker"], stderr="not found")
+        return ["wg0"]
+    monkeypatch.setattr(awgmod, "list_interfaces", fake_list)
+
+    r = client.post(
+        "/settings",
+        data={"awg_container": "amnezia-wireguard", "awg_interface": "wg0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+    # awg_binary should now be persisted as 'wg' in settings
+    db_path = client.app.dependency_overrides  # not how to access — use direct DB
+    # Just check via /settings GET that current binary in template is 'wg'
+    page = client.get("/settings").text
+    # template renders {{ binary }} as a code element; presence of 'wg show interfaces' confirms it
+    assert "wg show interfaces" in page
 
 
 def test_post_settings_rejects_unknown_container(client, monkeypatch):

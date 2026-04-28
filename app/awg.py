@@ -16,10 +16,10 @@ def list_docker_containers() -> list[str]:
 
 
 def list_interfaces(container: str, binary: str = "awg") -> list[str]:
-    """AmneziaWG interface names visible inside the given container.
+    """AmneziaWG / WireGuard interface names visible inside the given container.
 
-    `awg show interfaces` outputs a single line of space-separated interface names,
-    or an empty string if no interfaces are configured.
+    `<binary> show interfaces` outputs a single line of space-separated interface
+    names, or an empty string if no interfaces are configured.
     """
     proc = subprocess.run(
         ["docker", "exec", container, binary, "show", "interfaces"],
@@ -29,6 +29,35 @@ def list_interfaces(container: str, binary: str = "awg") -> list[str]:
         timeout=5,
     )
     return proc.stdout.split()
+
+
+def list_interfaces_autodetect(container: str) -> tuple[str, list[str]]:
+    """Try AmneziaWG (`awg`) first, then vanilla WireGuard (`wg`).
+
+    AmneziaWG is a fork of wireguard-tools and ships the `awg` binary; vanilla
+    WG containers (e.g. plain wg-easy or wireguard kernel module) expose `wg`.
+    Both produce the same `show interfaces` and `show <iface> dump` output, so
+    the rest of the pipeline doesn't care which one we end up using.
+
+    Returns (binary, interfaces). Raises RuntimeError if neither binary is
+    present in the container or returns successfully.
+    """
+    errors: list[str] = []
+    for binary in ("awg", "wg"):
+        try:
+            return binary, list_interfaces(container, binary)
+        except subprocess.CalledProcessError as e:
+            stderr = (e.stderr or "").strip()
+            errors.append(
+                f"{binary}: exit {e.returncode}"
+                + (f": {stderr}" if stderr else "")
+            )
+        except subprocess.TimeoutExpired:
+            errors.append(f"{binary}: timeout")
+    raise RuntimeError(
+        "no AmneziaWG/WireGuard binary found in container; tried "
+        + " | ".join(errors)
+    )
 
 
 def fetch_dump(container: str, interface: str, binary: str = "awg") -> str:

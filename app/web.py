@@ -174,9 +174,8 @@ def create_app(cfg: Config) -> FastAPI:
             raise HTTPException(500, f"docker not available: {e}")
         if awg_container not in running:
             raise HTTPException(400, f"container '{awg_container}' is not running")
-        binary = dbmod.get_setting(conn, "awg_binary") or cfg.awg.binary
         try:
-            ifaces = awgmod.list_interfaces(awg_container, binary)
+            binary, ifaces = awgmod.list_interfaces_autodetect(awg_container)
         except Exception as e:
             raise HTTPException(400, f"can't list interfaces in '{awg_container}': {e}")
         if awg_interface not in ifaces:
@@ -185,6 +184,7 @@ def create_app(cfg: Config) -> FastAPI:
             )
         dbmod.set_setting(conn, "awg_container", awg_container)
         dbmod.set_setting(conn, "awg_interface", awg_interface)
+        dbmod.set_setting(conn, "awg_binary", binary)
         return RedirectResponse("/settings", status_code=303)
 
     @app.get("/api/docker/containers")
@@ -202,9 +202,9 @@ def create_app(cfg: Config) -> FastAPI:
             raise HTTPException(500, f"docker not available: {e}")
         if name not in running:
             raise HTTPException(400, "unknown or stopped container")
-        binary = dbmod.get_setting(conn, "awg_binary") or cfg.awg.binary
         try:
-            return {"interfaces": awgmod.list_interfaces(name, binary)}
+            binary, ifaces = awgmod.list_interfaces_autodetect(name)
+            return {"binary": binary, "interfaces": ifaces}
         except Exception as e:
             raise HTTPException(400, f"can't list interfaces: {e}")
 
