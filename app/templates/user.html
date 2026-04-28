@@ -51,6 +51,14 @@
     </tr>
     {% endfor %}
   </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="4">TOTAL</td>
+      <td>{{ (peers | sum(attribute='lifetime_tx')) | bytes }}</td>
+      <td>{{ (peers | sum(attribute='lifetime_rx')) | bytes }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
 </table>
 {% endif %}
 {% endblock %}

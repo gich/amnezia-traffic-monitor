@@ -46,17 +46,49 @@
     </tr>
     {% endfor %}
   </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="5">TOTAL</td>
+      <td id="total-tx" data-full="{{ peers | sum(attribute='lifetime_tx') }}">{{ (peers | sum(attribute='lifetime_tx')) | bytes }}</td>
+      <td id="total-rx" data-full="{{ peers | sum(attribute='lifetime_rx') }}">{{ (peers | sum(attribute='lifetime_rx')) | bytes }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
 </table>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 <script src="/static/sort.js"></script>
 <script>
-  // Build the source filter dropdown from data-source attributes on rows,
-  // then hide rows that don't match the picked option.
+  // Build the source filter dropdown from data-source attributes on rows;
+  // hide non-matching rows and recompute the TOTAL of visible rows.
   const filter = document.getElementById("source-filter");
   const countEl = document.getElementById("filter-count");
   const rows = document.querySelectorAll("table.sortable tbody tr");
+  const totalTxEl = document.getElementById("total-tx");
+  const totalRxEl = document.getElementById("total-rx");
+
+  function fmtBytes(n) {
+    let f = n;
+    for (const u of ["B", "KB", "MB", "GB", "TB"]) {
+      if (Math.abs(f) < 1024 || u === "TB") return f.toFixed(2) + " " + u;
+      f /= 1024;
+    }
+    return f.toFixed(2) + " TB";
+  }
+
+  function recomputeTotals() {
+    let tx = 0, rx = 0;
+    for (const tr of rows) {
+      if (tr.style.display === "none") continue;
+      // tx column = index 5 (User, Label, Source, IP, Pubkey, Down, Up, Last)
+      tx += parseInt(tr.cells[5].dataset.value, 10) || 0;
+      rx += parseInt(tr.cells[6].dataset.value, 10) || 0;
+    }
+    if (totalTxEl) totalTxEl.textContent = fmtBytes(tx);
+    if (totalRxEl) totalRxEl.textContent = fmtBytes(rx);
+  }
+
   if (filter) {
     const sources = new Set();
     let hasUnknown = false;
@@ -89,6 +121,7 @@
         if (show) shown++;
       }
       countEl.textContent = target ? `${shown} of ${rows.length}` : "";
+      recomputeTotals();
     }
     filter.addEventListener("change", applyFilter);
   }

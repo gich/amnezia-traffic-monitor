@@ -289,6 +289,28 @@ def test_edit_peer_rejects_unknown_user_id(client):
     assert r.status_code == 400
 
 
+def test_index_has_total_row(client):
+    text = client.get("/").text
+    assert "TOTAL" in text
+    # tx sum: Vasya(1000+2000) + Petya(500) + orphan(20) = 3520 B
+    assert "3.44 KB" in text
+
+
+def test_user_page_has_total_row_for_user_peers(client):
+    text = client.get("/user/1").text  # Vasya
+    assert "TOTAL" in text
+    # Vasya: tx 1000+2000=3000 B = 2.93 KB ; rx 100+200=300 B
+    assert "2.93 KB" in text
+    assert "300.00 B" in text
+
+
+def test_peers_page_has_total_row(client):
+    text = client.get("/peers").text
+    assert "TOTAL" in text
+    # all peers tx sum: 1000+2000+500+20 = 3520 B = 3.44 KB
+    assert "3.44 KB" in text
+
+
 def test_settings_page_renders_with_current_values(client):
     r = client.get("/settings")
     assert r.status_code == 200

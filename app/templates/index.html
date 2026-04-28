@@ -35,6 +35,18 @@
     </tr>
     {% endif %}
   </tbody>
+  {% set u_tx = unassigned.lifetime_tx if unassigned else 0 %}
+  {% set u_rx = unassigned.lifetime_rx if unassigned else 0 %}
+  {% set u_peers = unassigned.peers if unassigned else 0 %}
+  <tfoot>
+    <tr class="total-row">
+      <td>TOTAL</td>
+      <td>{{ (users | sum(attribute='peers')) + u_peers }}</td>
+      <td>{{ ((users | sum(attribute='lifetime_tx')) + u_tx) | bytes }}</td>
+      <td>{{ ((users | sum(attribute='lifetime_rx')) + u_rx) | bytes }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
 </table>
 {% endif %}
 {% endblock %}
