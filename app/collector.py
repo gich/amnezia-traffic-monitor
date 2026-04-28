@@ -51,10 +51,22 @@ def process_observations(
     conn: sqlite3.Connection,
     samples: list[PeerSample],
     now: datetime,
+    container: str | None = None,
+    interface: str | None = None,
 ) -> None:
-    """For each observed peer, compute the delta against persisted state and write it back."""
+    """For each observed peer, compute the delta against persisted state and write it back.
+
+    `container`/`interface` describe which source these samples came from; they're
+    stored on the peer row so the UI can show / filter by source of last observation.
+    """
     for s in samples:
-        peer_id = dbmod.get_or_create_peer(conn, s.pubkey, allowed_ips=s.allowed_ips)
+        peer_id = dbmod.get_or_create_peer(
+            conn,
+            s.pubkey,
+            allowed_ips=s.allowed_ips,
+            container=container,
+            interface=interface,
+        )
         prev = dbmod.get_totals(conn, peer_id)
         tick = compute_tick(prev, s.rx_bytes, s.tx_bytes)
         if tick.reset_detected:
@@ -96,7 +108,7 @@ def run_loop(config_path: str) -> None:
             dump = awgmod.fetch_dump(container, interface, binary)
             samples = awgmod.parse_dump(dump)
             now = datetime.now(timezone.utc)
-            process_observations(conn, samples, now)
+            process_observations(conn, samples, now, container=container, interface=interface)
 
             today = now.date()
             if last_cleanup_day != today:

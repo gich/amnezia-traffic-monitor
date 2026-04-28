@@ -87,6 +87,41 @@ def test_peers_page_shows_allowed_ips(tmp_path):
     assert "10.8.1.42/32" in text
 
 
+def test_peers_page_shows_source_column_and_filter(tmp_path):
+    db_path = str(tmp_path / "src.db")
+    conn = dbmod.connect(db_path)
+    dbmod.init_schema(conn)
+    process_observations(conn, [PeerSample("k1=", 10, 20, None)],
+                        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+                        container="amnezia-awg2", interface="wg0")
+    process_observations(conn, [PeerSample("k2=", 30, 40, None)],
+                        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+                        container="amnezia-wireguard", interface="wg0")
+    conn.close()
+    text = TestClient(create_app(make_cfg(db_path))).get("/peers").text
+    assert "amnezia-awg2/wg0" in text
+    assert "amnezia-wireguard/wg0" in text
+    # Filter dropdown must be present
+    assert 'id="source-filter"' in text
+    # Each row carries a data-source attr for the JS filter
+    assert 'data-source="amnezia-awg2"' in text
+    assert 'data-source="amnezia-wireguard"' in text
+
+
+def test_peer_detail_shows_source(tmp_path):
+    db_path = str(tmp_path / "src2.db")
+    conn = dbmod.connect(db_path)
+    dbmod.init_schema(conn)
+    process_observations(conn, [PeerSample("k1=", 10, 20, None)],
+                        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+                        container="amnezia-awg2", interface="wg0")
+    peer_id = conn.execute("SELECT id FROM peers").fetchone()["id"]
+    conn.close()
+    text = TestClient(create_app(make_cfg(db_path))).get(f"/peer/{peer_id}").text
+    assert ">Source<" in text
+    assert "amnezia-awg2/wg0" in text
+
+
 def test_peer_page_shows_allowed_ips(tmp_path):
     db_path = str(tmp_path / "ips.db")
     conn = dbmod.connect(db_path)
@@ -218,7 +253,7 @@ def test_edit_peer_creates_new_user_and_assigns(client):
     # find the peer id that is rendered as unassigned
     # easier: find pubkey "orphan" and trace back via API; instead, query DB via internal route
     # but TestClient doesn't expose that. Use the unassigned class from HTML.
-    matches = re.findall(r'<tr class="unassigned">.*?/peer/(\d+)', peers_page, re.DOTALL)
+    matches = re.findall(r'<tr[^>]*class="unassigned"[^>]*>.*?/peer/(\d+)', peers_page, re.DOTALL)
     assert matches, "expected at least one unassigned peer in /peers"
     peer_id = matches[0]
     r = client.post(

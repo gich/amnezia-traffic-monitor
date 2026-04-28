@@ -82,6 +82,64 @@ def test_get_or_create_peer_updates_allowed_ips_when_changed():
     assert row["allowed_ips"] == "10.0.0.99/32"
 
 
+def test_get_or_create_peer_stores_container_and_interface():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    pid = dbmod.get_or_create_peer(
+        conn, "k1=", container="amnezia-awg2", interface="wg0"
+    )
+    row = conn.execute(
+        "SELECT container, interface FROM peers WHERE id = ?", (pid,)
+    ).fetchone()
+    assert row["container"] == "amnezia-awg2"
+    assert row["interface"] == "wg0"
+
+
+def test_get_or_create_peer_updates_container_when_changed():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    pid = dbmod.get_or_create_peer(conn, "k1=", container="old", interface="wg0")
+    dbmod.get_or_create_peer(conn, "k1=", container="new", interface="wg0")
+    row = conn.execute("SELECT container, interface FROM peers WHERE id = ?", (pid,)).fetchone()
+    assert row["container"] == "new"
+    assert row["interface"] == "wg0"
+
+
+def test_get_or_create_peer_does_not_clear_container_with_none():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    pid = dbmod.get_or_create_peer(conn, "k1=", container="amnezia-awg2", interface="wg0")
+    dbmod.get_or_create_peer(conn, "k1=")  # no container/interface info
+    row = conn.execute("SELECT container, interface FROM peers WHERE id = ?", (pid,)).fetchone()
+    assert row["container"] == "amnezia-awg2"
+    assert row["interface"] == "wg0"
+
+
+def test_migration_adds_container_and_interface():
+    """Verify the migration handles a DB that already has allowed_ips but
+    is missing the new container/interface columns."""
+    conn = dbmod.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, comment TEXT, created_at TEXT);
+        CREATE TABLE peers (
+            id INTEGER PRIMARY KEY, user_id INTEGER, pubkey TEXT NOT NULL UNIQUE,
+            label TEXT, allowed_ips TEXT, active INTEGER, created_at TEXT
+        );
+        CREATE TABLE peer_totals (peer_id INTEGER PRIMARY KEY);
+        CREATE TABLE peer_samples (peer_id INTEGER, ts TEXT, rx_bytes INTEGER, tx_bytes INTEGER, PRIMARY KEY(peer_id, ts));
+        """
+    )
+    conn.execute("INSERT INTO peers (pubkey, label, allowed_ips) VALUES ('k=', 'l', '10.0.0.1/32')")
+    dbmod.init_schema(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(peers)").fetchall()}
+    assert "container" in cols
+    assert "interface" in cols
+    row = conn.execute("SELECT pubkey, container, interface FROM peers").fetchone()
+    assert row["container"] is None
+    assert row["interface"] is None
+
+
 def test_get_or_create_peer_does_not_clear_existing_ip_with_none():
     """If a tick comes through with no allowed_ips info, don't blow away what's stored."""
     conn = dbmod.connect(":memory:")

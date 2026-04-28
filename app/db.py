@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS peers (
     pubkey      TEXT NOT NULL UNIQUE,
     label       TEXT,
     allowed_ips TEXT,
+    container   TEXT,
+    interface   TEXT,
     active      INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -73,27 +75,51 @@ def _migrate(conn: sqlite3.Connection) -> None:
     peer_cols = {r[1] for r in conn.execute("PRAGMA table_info(peers)").fetchall()}
     if "allowed_ips" not in peer_cols:
         conn.execute("ALTER TABLE peers ADD COLUMN allowed_ips TEXT")
+    if "container" not in peer_cols:
+        conn.execute("ALTER TABLE peers ADD COLUMN container TEXT")
+    if "interface" not in peer_cols:
+        conn.execute("ALTER TABLE peers ADD COLUMN interface TEXT")
 
 
 def get_or_create_peer(
     conn: sqlite3.Connection,
     pubkey: str,
     allowed_ips: str | None = None,
+    container: str | None = None,
+    interface: str | None = None,
 ) -> int:
+    """Look up a peer by pubkey, inserting if new. Refreshes mutable metadata
+    (allowed_ips, container, interface) when the observed value differs from
+    what's stored — but never overwrites a stored value with NULL, so a tick
+    that doesn't carry the metadata won't blow away what was previously seen.
+    """
     row = conn.execute(
-        "SELECT id, allowed_ips FROM peers WHERE pubkey = ?", (pubkey,)
+        "SELECT id, allowed_ips, container, interface FROM peers WHERE pubkey = ?",
+        (pubkey,),
     ).fetchone()
     if row:
-        # Refresh allowed_ips if it changed (peer reconfigured) or wasn't set yet.
+        updates: list[str] = []
+        params: list[str] = []
         if allowed_ips and allowed_ips != row["allowed_ips"]:
+            updates.append("allowed_ips = ?")
+            params.append(allowed_ips)
+        if container and container != row["container"]:
+            updates.append("container = ?")
+            params.append(container)
+        if interface and interface != row["interface"]:
+            updates.append("interface = ?")
+            params.append(interface)
+        if updates:
+            params.append(row["id"])
             conn.execute(
-                "UPDATE peers SET allowed_ips = ? WHERE id = ?",
-                (allowed_ips, row["id"]),
+                f"UPDATE peers SET {', '.join(updates)} WHERE id = ?",
+                params,
             )
         return row["id"]
     cur = conn.execute(
-        "INSERT INTO peers (pubkey, label, allowed_ips) VALUES (?, ?, ?)",
-        (pubkey, "unassigned", allowed_ips),
+        "INSERT INTO peers (pubkey, label, allowed_ips, container, interface) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (pubkey, "unassigned", allowed_ips, container, interface),
     )
     peer_id = cur.lastrowid
     conn.execute("INSERT INTO peer_totals (peer_id) VALUES (?)", (peer_id,))

@@ -41,6 +41,7 @@
   </dd>
   <dt>Public key</dt><dd class="peer-pubkey">{{ peer.pubkey }}</dd>
   <dt>Allowed IPs</dt><dd class="peer-ip">{{ peer.allowed_ips or '-' }}</dd>
+  <dt>Source</dt><dd>{% if peer.container %}{{ peer.container }}{% if peer.interface %}/{{ peer.interface }}{% endif %}{% else %}-{% endif %}</dd>
   <dt>Downloaded (lifetime)</dt><dd>{{ peer.lifetime_tx | bytes }}</dd>
   <dt>Uploaded (lifetime)</dt><dd>{{ peer.lifetime_rx | bytes }}</dd>
   <dt>Last handshake</dt><dd>{{ peer.last_handshake_at | handshake }}</dd>

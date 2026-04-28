@@ -30,6 +30,7 @@
   <thead>
     <tr>
       <th>Label</th>
+      <th>Source</th>
       <th>IP</th>
       <th>Pubkey</th>
       <th data-sort="number">Downloaded</th>
@@ -41,6 +42,7 @@
     {% for p in peers %}
     <tr>
       <td><a href="/peer/{{ p.id }}">{{ p.label or '-' }}</a></td>
+      <td>{% if p.container %}{{ p.container }}{% if p.interface %}/{{ p.interface }}{% endif %}{% else %}-{% endif %}</td>
       <td class="peer-ip">{{ p.allowed_ips or '-' }}</td>
       <td class="peer-pubkey">{{ p.pubkey[:16] }}…</td>
       <td data-value="{{ p.lifetime_tx }}">{{ p.lifetime_tx | bytes }}</td>

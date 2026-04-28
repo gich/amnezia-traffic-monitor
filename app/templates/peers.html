@@ -5,11 +5,20 @@
 {% if not peers %}
 <p class="empty">No peers yet. Wait for the collector to observe at least one tick.</p>
 {% else %}
+<div class="filter-bar">
+  <label>Filter by source:
+    <select id="source-filter">
+      <option value="">All</option>
+    </select>
+  </label>
+  <span class="filter-count" id="filter-count"></span>
+</div>
 <table class="sortable">
   <thead>
     <tr>
       <th>User</th>
       <th>Label</th>
+      <th>Source</th>
       <th>IP</th>
       <th>Pubkey</th>
       <th data-sort="number">Downloaded</th>
@@ -19,7 +28,7 @@
   </thead>
   <tbody>
     {% for p in peers %}
-    <tr {% if not p.user_id %}class="unassigned"{% endif %}>
+    <tr data-source="{{ p.container or '' }}" {% if not p.user_id %}class="unassigned"{% endif %}>
       <td>
         {% if p.user_id %}
           <a href="/user/{{ p.user_id }}">{{ p.user_name }}</a>
@@ -28,6 +37,7 @@
         {% endif %}
       </td>
       <td><a href="/peer/{{ p.id }}">{{ p.label or '-' }}</a></td>
+      <td>{% if p.container %}{{ p.container }}{% if p.interface %}/{{ p.interface }}{% endif %}{% else %}-{% endif %}</td>
       <td class="peer-ip">{{ p.allowed_ips or '-' }}</td>
       <td class="peer-pubkey">{{ p.pubkey[:16] }}…</td>
       <td data-value="{{ p.lifetime_tx }}">{{ p.lifetime_tx | bytes }}</td>
@@ -39,4 +49,48 @@
 </table>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/sort.js"></script>{% endblock %}
+{% block scripts %}
+<script src="/static/sort.js"></script>
+<script>
+  // Build the source filter dropdown from data-source attributes on rows,
+  // then hide rows that don't match the picked option.
+  const filter = document.getElementById("source-filter");
+  const countEl = document.getElementById("filter-count");
+  const rows = document.querySelectorAll("table.sortable tbody tr");
+  if (filter) {
+    const sources = new Set();
+    let hasUnknown = false;
+    for (const tr of rows) {
+      if (tr.dataset.source) sources.add(tr.dataset.source);
+      else hasUnknown = true;
+    }
+    for (const s of [...sources].sort()) {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      filter.appendChild(opt);
+    }
+    if (hasUnknown) {
+      const opt = document.createElement("option");
+      opt.value = "__unknown__";
+      opt.textContent = "(unknown)";
+      filter.appendChild(opt);
+    }
+
+    function applyFilter() {
+      const target = filter.value;
+      let shown = 0;
+      for (const tr of rows) {
+        let show;
+        if (!target) show = true;
+        else if (target === "__unknown__") show = !tr.dataset.source;
+        else show = tr.dataset.source === target;
+        tr.style.display = show ? "" : "none";
+        if (show) shown++;
+      }
+      countEl.textContent = target ? `${shown} of ${rows.length}` : "";
+    }
+    filter.addEventListener("change", applyFilter);
+  }
+</script>
+{% endblock %}

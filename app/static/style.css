@@ -147,6 +147,22 @@ form.settings-form button {
 }
 form.settings-form button:hover { background: #024ea2; border-color: #024ea2; }
 
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9em;
+}
+.filter-bar select {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95em;
+  font-family: inherit;
+}
+.filter-bar .filter-count { color: #888; }
+
 .error-banner {
   background: #fdecea;
   border: 1px solid #f5b3b3;

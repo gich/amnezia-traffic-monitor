@@ -148,6 +148,40 @@ def test_unknown_pubkey_auto_creates_peer():
     assert row["user_id"] is None
 
 
+def test_collector_tags_peers_with_source():
+    """Each tick records which container/interface the samples came from."""
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    process_observations(
+        conn,
+        [PeerSample("k1=", rx_bytes=10, tx_bytes=20, latest_handshake=None)],
+        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+        container="amnezia-awg2",
+        interface="wg0",
+    )
+    row = conn.execute("SELECT container, interface FROM peers WHERE pubkey='k1='").fetchone()
+    assert row["container"] == "amnezia-awg2"
+    assert row["interface"] == "wg0"
+
+
+def test_collector_updates_source_when_peer_appears_in_new_container():
+    """If admin switches the source and the same pubkey is seen there, update the tag."""
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    t1 = datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc)
+    t2 = datetime(2026, 4, 28, 12, 0, 30, tzinfo=timezone.utc)
+    process_observations(
+        conn, [PeerSample("k=", 0, 0, None)], t1,
+        container="amnezia-awg2", interface="wg0",
+    )
+    process_observations(
+        conn, [PeerSample("k=", 0, 0, None)], t2,
+        container="amnezia-wireguard", interface="wg0",
+    )
+    row = conn.execute("SELECT container FROM peers").fetchone()
+    assert row["container"] == "amnezia-wireguard"
+
+
 def test_collector_persists_allowed_ips_for_new_peer():
     conn = dbmod.connect(":memory:")
     dbmod.init_schema(conn)
