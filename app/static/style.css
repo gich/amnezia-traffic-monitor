@@ -58,6 +58,29 @@ tfoot tr.total-row td {
   border-top: 2px solid #ccc;
 }
 
+section.danger-zone {
+  margin-top: 2.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #f5b3b3;
+  border-radius: 6px;
+  background: #fff8f8;
+}
+section.danger-zone h2 { margin: 0 0 0.5rem; color: #802424; border: none; }
+section.danger-zone p { color: #555; font-size: 0.9em; margin: 0 0 0.75rem; }
+section.danger-zone .btn-danger {
+  padding: 0.4rem 1rem;
+  border: 1px solid #cc4040;
+  background: #d44a4a;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.95em;
+}
+section.danger-zone .btn-danger:hover {
+  background: #b03434;
+  border-color: #b03434;
+}
+
 .peer-pubkey { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.85em; color: #555; }
 .peer-ip { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.9em; color: #444; white-space: nowrap; }
 .empty { color: #888; }

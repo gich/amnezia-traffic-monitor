@@ -148,6 +148,16 @@ def create_app(cfg: Config) -> FastAPI:
 
         return RedirectResponse(f"/peer/{peer_id}", status_code=303)
 
+    @app.post("/peer/{peer_id}/delete")
+    def delete_peer_handler(
+        peer_id: int,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        if not q.get_peer(conn, peer_id):
+            raise HTTPException(404, "peer not found")
+        dbmod.delete_peer(conn, peer_id)
+        return RedirectResponse("/peers", status_code=303)
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request, conn: sqlite3.Connection = Depends(get_conn)):
         container, interface, binary = dbmod.get_active_source(conn, cfg)

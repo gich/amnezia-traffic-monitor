@@ -150,6 +150,38 @@ def test_get_or_create_peer_does_not_clear_existing_ip_with_none():
     assert row["allowed_ips"] == "10.0.0.5/32"
 
 
+def test_delete_peer_cascades_to_totals_and_samples():
+    from datetime import datetime, timezone
+    from app.collector import process_observations
+    from app.models import PeerSample
+
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    process_observations(
+        conn,
+        [PeerSample("k=", rx_bytes=10, tx_bytes=20, latest_handshake=None)],
+        datetime(2026, 4, 28, 12, 0, tzinfo=timezone.utc),
+    )
+    peer_id = conn.execute("SELECT id FROM peers WHERE pubkey='k='").fetchone()["id"]
+
+    # baseline: row exists in all three tables
+    assert conn.execute("SELECT 1 FROM peer_totals WHERE peer_id=?", (peer_id,)).fetchone()
+    assert conn.execute("SELECT 1 FROM peer_samples WHERE peer_id=?", (peer_id,)).fetchone()
+
+    deleted = dbmod.delete_peer(conn, peer_id)
+    assert deleted is True
+
+    assert conn.execute("SELECT 1 FROM peers WHERE id=?", (peer_id,)).fetchone() is None
+    assert conn.execute("SELECT 1 FROM peer_totals WHERE peer_id=?", (peer_id,)).fetchone() is None
+    assert conn.execute("SELECT 1 FROM peer_samples WHERE peer_id=?", (peer_id,)).fetchone() is None
+
+
+def test_delete_peer_returns_false_for_unknown():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    assert dbmod.delete_peer(conn, 999) is False
+
+
 def test_get_setting_returns_none_when_missing():
     conn = dbmod.connect(":memory:")
     dbmod.init_schema(conn)

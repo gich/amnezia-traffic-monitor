@@ -213,6 +213,15 @@ def update_peer(
     )
 
 
+def delete_peer(conn: sqlite3.Connection, peer_id: int) -> bool:
+    """Delete a peer; FK cascades drop its peer_totals and peer_samples rows.
+
+    Returns True if a row was actually deleted.
+    """
+    cur = conn.execute("DELETE FROM peers WHERE id = ?", (peer_id,))
+    return cur.rowcount > 0
+
+
 def assign_peer_to_new_user(
     conn: sqlite3.Connection,
     peer_id: int,

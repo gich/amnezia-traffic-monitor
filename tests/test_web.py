@@ -4,7 +4,7 @@ Each test creates a temp DB, seeds it with known data, builds the FastAPI app
 against that DB, and hits the routes. Verifies HTML contains expected
 identifiers and JSON endpoints return the right shape.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -33,12 +33,14 @@ def client(tmp_path):
     dbmod.init_schema(conn)
     conn.execute("INSERT INTO users (id, name) VALUES (1, 'Vasya')")
     conn.execute("INSERT INTO users (id, name) VALUES (2, 'Petya')")
+    # Recent timestamp so the 24h-window timeseries tests find samples inside the window.
+    recent = datetime.now(timezone.utc) - timedelta(minutes=5)
     process_observations(conn, [
         PeerSample("v1=", rx_bytes=100, tx_bytes=1000, latest_handshake=1714200000),
         PeerSample("v2=", rx_bytes=200, tx_bytes=2000, latest_handshake=1714200000),
         PeerSample("p1=", rx_bytes=50, tx_bytes=500, latest_handshake=1714200000),
         PeerSample("orphan=", rx_bytes=10, tx_bytes=20, latest_handshake=None),
-    ], datetime(2026, 4, 27, 12, 0, 0, tzinfo=timezone.utc))
+    ], recent)
     conn.execute("UPDATE peers SET user_id=1, label='iPhone' WHERE pubkey='v1='")
     conn.execute("UPDATE peers SET user_id=1, label='Mac' WHERE pubkey='v2='")
     conn.execute("UPDATE peers SET user_id=2, label='Desktop' WHERE pubkey='p1='")
@@ -309,6 +311,33 @@ def test_peers_page_has_total_row(client):
     assert "TOTAL" in text
     # all peers tx sum: 1000+2000+500+20 = 3520 B = 3.44 KB
     assert "3.44 KB" in text
+
+
+def test_peer_page_has_delete_button(client):
+    import re
+    user_page = client.get("/user/1").text
+    peer_id = re.findall(r'/peer/(\d+)', user_page)[0]
+    page = client.get(f"/peer/{peer_id}").text
+    assert "Delete peer" in page
+    assert f'/peer/{peer_id}/delete' in page
+
+
+def test_post_peer_delete_removes_peer_and_redirects(client):
+    import re
+    user_page = client.get("/user/1").text
+    peer_id = re.findall(r'/peer/(\d+)', user_page)[0]
+
+    r = client.post(f"/peer/{peer_id}/delete", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/peers"
+
+    # peer should no longer exist
+    assert client.get(f"/peer/{peer_id}").status_code == 404
+
+
+def test_post_peer_delete_404_for_unknown(client):
+    r = client.post("/peer/9999/delete", follow_redirects=False)
+    assert r.status_code == 404
 
 
 def test_settings_page_renders_with_current_values(client):

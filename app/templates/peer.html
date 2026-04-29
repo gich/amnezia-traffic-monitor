@@ -55,6 +55,20 @@
   <button data-window="30d">30 days</button>
 </div>
 <canvas id="peer-chart"></canvas>
+
+<section class="danger-zone">
+  <h2>Delete</h2>
+  <p>
+    Removes this peer from the database, including its totals and traffic history.
+    If the peer is still configured in AmneziaWG, the collector will re-register it
+    (without user / label) on the next tick — remove it from the AmneziaVPN GUI first
+    if you want a permanent delete.
+  </p>
+  <form method="post" action="/peer/{{ peer.id }}/delete"
+        onsubmit="return confirm('Delete this peer? Totals and traffic history will be lost.');">
+    <button type="submit" class="btn-danger">Delete peer</button>
+  </form>
+</section>
 {% endblock %}
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
