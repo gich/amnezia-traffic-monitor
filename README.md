@@ -162,7 +162,7 @@ cd /opt/amnezia-monitor
 ### CLI (`scripts/add_user.py`)
 
 ```bash
-.venv/bin/python scripts/add_user.py create-user "Vasya" [--comment "..."]
+.venv/bin/python scripts/add_user.py create-user "Max" [--comment "..."]
 .venv/bin/python scripts/add_user.py list-users
 .venv/bin/python scripts/add_user.py list-peers
 .venv/bin/python scripts/add_user.py assign <user> <peer> [--label "..."]
