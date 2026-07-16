@@ -2,6 +2,30 @@
 {% block title %}Users — Amnezia Traffic Monitor{% endblock %}
 {% block content %}
 <h1>Users</h1>
+
+<h2>Total traffic by period</h2>
+<div class="usage-range"
+     data-usage-url="/api/total/usage"
+     data-series-url="/api/total/usage_series">
+  <div class="usage-presets">
+    <button data-preset="this-month" class="active">This month</button>
+    <button data-preset="prev-month">Prev month</button>
+    <button data-preset="30d">30 days</button>
+    <button data-preset="7d">7 days</button>
+  </div>
+  <div class="usage-inputs">
+    <label>From <input type="date" class="usage-from"></label>
+    <label>To <input type="date" class="usage-to"></label>
+    <button type="button" class="usage-apply">Apply</button>
+  </div>
+  <div class="usage-totals">
+    <div class="usage-stat down"><span class="usage-label">Downloaded</span><span class="usage-value usage-down">—</span></div>
+    <div class="usage-stat up"><span class="usage-label">Uploaded</span><span class="usage-value usage-up">—</span></div>
+  </div>
+  <canvas class="usage-canvas"></canvas>
+</div>
+
+<h2>Users</h2>
 {% if not users and not unassigned %}
 <p class="empty">No data yet. The collector hasn't seen any peers, or no users have been created.</p>
 {% else %}
@@ -50,4 +74,8 @@
 </table>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="/static/sort.js"></script>{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+<script src="/static/sort.js"></script>
+<script src="/static/usage.js"></script>
+{% endblock %}

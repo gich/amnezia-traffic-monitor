@@ -252,6 +252,14 @@ def test_api_usage_defaults_to_current_month(client):
     assert r.json() == {"rx": 300, "tx": 3000}
 
 
+def test_index_has_total_usage_widget(client):
+    text = client.get("/").text
+    assert "Total traffic by period" in text
+    assert 'data-usage-url="/api/total/usage"' in text
+    assert 'data-series-url="/api/total/usage_series"' in text
+    assert "/static/usage.js" in text
+
+
 def test_user_page_has_usage_widget(client):
     text = client.get("/user/1").text
     assert "Usage by period" in text
