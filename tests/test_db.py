@@ -182,6 +182,85 @@ def test_delete_peer_returns_false_for_unknown():
     assert dbmod.delete_peer(conn, 999) is False
 
 
+def test_write_tick_accumulates_peer_daily():
+    """process_observations -> write_tick should roll each delta into peer_daily."""
+    from datetime import datetime, timezone
+    from app.collector import process_observations
+    from app.models import PeerSample
+
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    t = datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc)
+    day = t.astimezone().strftime("%Y-%m-%d")
+    # first observation: delta == full counter value
+    process_observations(conn, [PeerSample("k=", rx_bytes=100, tx_bytes=1000, latest_handshake=None)], t)
+    # second observation same day: counter grew by 50/500
+    process_observations(conn, [PeerSample("k=", rx_bytes=150, tx_bytes=1500, latest_handshake=None)], t)
+
+    peer_id = conn.execute("SELECT id FROM peers WHERE pubkey='k='").fetchone()["id"]
+    row = conn.execute(
+        "SELECT rx_bytes, tx_bytes FROM peer_daily WHERE peer_id=? AND day=?", (peer_id, day)
+    ).fetchone()
+    assert row["rx_bytes"] == 150   # 100 + 50
+    assert row["tx_bytes"] == 1500  # 1000 + 500
+
+
+def test_backfill_daily_rebuilds_from_samples():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    conn.execute("INSERT INTO peers (id, pubkey) VALUES (1, 'k=')")
+    conn.execute("INSERT INTO peer_totals (peer_id) VALUES (1)")
+    # two samples known to fall on the same local day (noon UTC + a bit later)
+    ts = "2026-04-27T12:00:00+00:00"
+    ts2 = "2026-04-27T12:05:00+00:00"
+    day = datetime_local_day(ts)
+    conn.execute("INSERT INTO peer_samples (peer_id, ts, rx_bytes, tx_bytes) VALUES (1, ?, 100, 1000)", (ts,))
+    conn.execute("INSERT INTO peer_samples (peer_id, ts, rx_bytes, tx_bytes) VALUES (1, ?, 50, 500)", (ts2,))
+
+    n = dbmod.backfill_daily(conn)
+    assert n == 1
+    row = conn.execute("SELECT rx_bytes, tx_bytes FROM peer_daily WHERE peer_id=1 AND day=?", (day,)).fetchone()
+    assert row["rx_bytes"] == 150
+    assert row["tx_bytes"] == 1500
+
+
+def test_backfill_daily_is_idempotent():
+    """Re-running backfill fully replaces rather than doubling the rollup."""
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    conn.execute("INSERT INTO peers (id, pubkey) VALUES (1, 'k=')")
+    conn.execute("INSERT INTO peer_totals (peer_id) VALUES (1)")
+    conn.execute(
+        "INSERT INTO peer_samples (peer_id, ts, rx_bytes, tx_bytes) VALUES (1, '2026-04-27T12:00:00+00:00', 100, 1000)"
+    )
+    dbmod.backfill_daily(conn)
+    dbmod.backfill_daily(conn)
+    total = conn.execute("SELECT SUM(rx_bytes) AS rx FROM peer_daily WHERE peer_id=1").fetchone()["rx"]
+    assert total == 100  # not 200
+
+
+def test_init_schema_backfills_daily_for_legacy_db():
+    """A DB with samples but an empty peer_daily (pre-feature) is backfilled on init."""
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    conn.execute("INSERT INTO peers (id, pubkey) VALUES (1, 'k=')")
+    conn.execute("INSERT INTO peer_totals (peer_id) VALUES (1)")
+    conn.execute(
+        "INSERT INTO peer_samples (peer_id, ts, rx_bytes, tx_bytes) VALUES (1, '2026-04-27T12:00:00+00:00', 100, 1000)"
+    )
+    conn.execute("DELETE FROM peer_daily")  # simulate pre-feature state
+
+    dbmod.init_schema(conn)  # should notice empty peer_daily + existing samples and backfill
+
+    total = conn.execute("SELECT SUM(rx_bytes) AS rx FROM peer_daily").fetchone()["rx"]
+    assert total == 100
+
+
+def datetime_local_day(iso_ts: str) -> str:
+    from datetime import datetime
+    return datetime.fromisoformat(iso_ts).astimezone().strftime("%Y-%m-%d")
+
+
 def test_get_setting_returns_none_when_missing():
     conn = dbmod.connect(":memory:")
     dbmod.init_schema(conn)

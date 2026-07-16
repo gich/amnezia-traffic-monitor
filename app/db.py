@@ -43,8 +43,17 @@ CREATE TABLE IF NOT EXISTS peer_samples (
     PRIMARY KEY (peer_id, ts)
 );
 
+CREATE TABLE IF NOT EXISTS peer_daily (
+    peer_id   INTEGER NOT NULL REFERENCES peers(id) ON DELETE CASCADE,
+    day       TEXT NOT NULL,           -- 'YYYY-MM-DD' in the server's local timezone
+    rx_bytes  INTEGER NOT NULL DEFAULT 0,
+    tx_bytes  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (peer_id, day)
+);
+
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON peer_samples(ts);
 CREATE INDEX IF NOT EXISTS idx_peers_user ON peers(user_id);
+CREATE INDEX IF NOT EXISTS idx_daily_day ON peer_daily(day);
 
 CREATE TABLE IF NOT EXISTS settings (
     key        TEXT PRIMARY KEY,
@@ -68,6 +77,7 @@ def connect(path: str) -> sqlite3.Connection:
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _migrate(conn)
+    _backfill_daily_if_empty(conn)
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -79,6 +89,52 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE peers ADD COLUMN container TEXT")
     if "interface" not in peer_cols:
         conn.execute("ALTER TABLE peers ADD COLUMN interface TEXT")
+
+
+def backfill_daily(conn: sqlite3.Connection) -> int:
+    """(Re)build peer_daily from scratch by aggregating peer_samples per local day.
+
+    Rows are grouped by `date(ts, 'localtime')` so day boundaries match the
+    incremental accounting done in write_tick (which uses the server's local
+    timezone). Fully replaces the table's contents. Returns the row count written.
+
+    Note: peer_daily only reaches as far back as peer_samples retention allows —
+    older detail has already been pruned — but going forward the incremental
+    write in write_tick keeps peer_daily complete beyond that retention window.
+    """
+    conn.execute("BEGIN")
+    try:
+        conn.execute("DELETE FROM peer_daily")
+        conn.execute(
+            """INSERT INTO peer_daily (peer_id, day, rx_bytes, tx_bytes)
+               SELECT peer_id,
+                      date(ts, 'localtime') AS day,
+                      SUM(rx_bytes),
+                      SUM(tx_bytes)
+               FROM peer_samples
+               GROUP BY peer_id, day"""
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    row = conn.execute("SELECT COUNT(*) AS n FROM peer_daily").fetchone()
+    return row["n"]
+
+
+def _backfill_daily_if_empty(conn: sqlite3.Connection) -> None:
+    """One-shot backfill for databases that predate the peer_daily table.
+
+    Runs on init_schema (i.e. collector startup after a deploy). Only fires when
+    peer_daily is empty but peer_samples has history — so it populates once from
+    the existing ~90 days of samples, then never again (subsequent ticks keep it
+    up to date incrementally).
+    """
+    if conn.execute("SELECT 1 FROM peer_daily LIMIT 1").fetchone():
+        return
+    if not conn.execute("SELECT 1 FROM peer_samples LIMIT 1").fetchone():
+        return
+    backfill_daily(conn)
 
 
 def get_or_create_peer(
@@ -151,13 +207,19 @@ def write_tick(
     delta_tx: int,
     latest_handshake: int | None,
 ) -> None:
-    """Update totals and insert a sample atomically.
+    """Update totals, insert a sample, and roll the delta into peer_daily atomically.
 
-    Both writes happen in one transaction so a crash mid-tick cannot leave
+    All writes happen in one transaction so a crash mid-tick cannot leave
     `total_*` advanced while `last_*` still pointing at the previous value
-    (which would otherwise cause double-counting on the next poll).
+    (which would otherwise cause double-counting on the next poll), nor the
+    per-day rollup drifting out of sync with the sample it was derived from.
+
+    The peer_daily `day` is bucketed in the server's local timezone (ts is UTC),
+    matching backfill_daily's `date(ts, 'localtime')`. peer_daily is never pruned,
+    so it retains history beyond peer_samples' retention window.
     """
     ts_str = ts.isoformat()
+    day = ts.astimezone().strftime("%Y-%m-%d")
     conn.execute("BEGIN")
     try:
         conn.execute(
@@ -180,6 +242,17 @@ def write_tick(
                 "INSERT OR IGNORE INTO peer_samples (peer_id, ts, rx_bytes, tx_bytes) "
                 "VALUES (?, ?, ?, ?)",
                 (peer_id, ts_str, delta_rx, delta_tx),
+            )
+            # Accumulate into the per-day rollup. INSERT-OR-IGNORE + UPDATE keeps
+            # this version-safe (no ON CONFLICT ... DO UPDATE, which needs SQLite 3.24+).
+            conn.execute(
+                "INSERT OR IGNORE INTO peer_daily (peer_id, day) VALUES (?, ?)",
+                (peer_id, day),
+            )
+            conn.execute(
+                "UPDATE peer_daily SET rx_bytes = rx_bytes + ?, tx_bytes = tx_bytes + ? "
+                "WHERE peer_id = ? AND day = ?",
+                (delta_rx, delta_tx, peer_id, day),
             )
         conn.execute("COMMIT")
     except Exception:

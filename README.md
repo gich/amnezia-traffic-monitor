@@ -5,6 +5,7 @@ Per-user / per-key traffic monitoring for an AmneziaWG VPN server running in Doc
 ## Features
 
 - **Per-peer and per-user statistics** — lifetime totals plus last 24h / 7d / 30d windows.
+- **Usage over any period** — pick an arbitrary date range (or a preset: this / previous month, last 7 / 30 days) on any user or peer page and see downloaded / uploaded bytes for exactly that span, plus a per-day bar chart. Backed by a never-pruned daily rollup (`peer_daily`), so history is not limited to sample retention.
 - **Web UI** built on FastAPI: users overview, full peer list, drill-down pages with Chart.js graphs.
 - **CLI** for management (`scripts/add_user.py`): create users, assign keys, `stats` with arbitrary time windows.
 - **Settings via the web UI** — container and interface are picked from dropdowns populated by live `docker ps` and `awg show interfaces` (no typos possible).
@@ -155,8 +156,8 @@ cd /opt/amnezia-monitor
 
 - `/` — users table (name, peer count, downloaded, uploaded, last handshake). Click any column header to sort.
 - `/peers` — full peer table with IP and pubkey prefix.
-- `/user/{id}` — user detail: traffic chart (24h / 7d / 30d) plus the list of their peers.
-- `/peer/{id}` — single key detail.
+- `/user/{id}` — user detail: traffic chart (24h / 7d / 30d), **Usage by period** (arbitrary date range → downloaded/uploaded totals + per-day bars), plus the list of their peers.
+- `/peer/{id}` — single key detail, with the same **Usage by period** panel.
 - `/settings` — choose source container and interface.
 
 ### CLI (`scripts/add_user.py`)
@@ -188,6 +189,8 @@ config_path = "/opt/amnezia/awg/wg0.conf"   # only for the optional scripts/boot
 [collector]
 poll_interval_seconds = 30
 sample_retention_days = 90       # peer_samples older than this are pruned daily
+                                 # (the per-day peer_daily rollup is NOT pruned —
+                                 #  arbitrary-period usage keeps working past this)
 
 [db]
 path = "/var/lib/amnezia-monitor/monitor.db"
@@ -207,7 +210,11 @@ systemctl restart amnezia-monitor-collector
 systemctl restart amnezia-monitor-web
 ```
 
-DB migrations (new columns, new tables) are applied automatically by `init_schema` when the collector starts.
+DB migrations (new columns, new tables) are applied automatically by `init_schema` when the collector starts. The first start after adding the per-period feature also backfills the `peer_daily` rollup from your existing `peer_samples` (last ~90 days), so usage-by-period works immediately rather than starting from zero. To force a full rebuild later:
+
+```bash
+.venv/bin/python scripts/backfill_daily.py
+```
 
 ## Logs and diagnostics
 
@@ -249,9 +256,10 @@ app/
   static/       # css + vanilla js (sort, chart-init)
   templates/    # Jinja2
 scripts/
-  install.sh    # interactive installer
-  add_user.py   # CLI: users, peers, stats
-  bootstrap.py  # one-shot import of peers from wg0.conf (optional)
+  install.sh        # interactive installer
+  add_user.py       # CLI: users, peers, stats
+  bootstrap.py      # one-shot import of peers from wg0.conf (optional)
+  backfill_daily.py # rebuild the peer_daily rollup from peer_samples (optional)
 systemd/
   amnezia-monitor-collector.service
   amnezia-monitor-web.service

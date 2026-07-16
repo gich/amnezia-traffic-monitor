@@ -56,6 +56,28 @@
 </div>
 <canvas id="peer-chart"></canvas>
 
+<h2>Usage by period</h2>
+<div class="usage-range"
+     data-usage-url="/api/peer/{{ peer.id }}/usage"
+     data-series-url="/api/peer/{{ peer.id }}/usage_series">
+  <div class="usage-presets">
+    <button data-preset="this-month" class="active">This month</button>
+    <button data-preset="prev-month">Prev month</button>
+    <button data-preset="30d">30 days</button>
+    <button data-preset="7d">7 days</button>
+  </div>
+  <div class="usage-inputs">
+    <label>From <input type="date" class="usage-from"></label>
+    <label>To <input type="date" class="usage-to"></label>
+    <button type="button" class="usage-apply">Apply</button>
+  </div>
+  <div class="usage-totals">
+    <div class="usage-stat down"><span class="usage-label">Downloaded</span><span class="usage-value usage-down">—</span></div>
+    <div class="usage-stat up"><span class="usage-label">Uploaded</span><span class="usage-value usage-up">—</span></div>
+  </div>
+  <canvas class="usage-canvas"></canvas>
+</div>
+
 <section class="danger-zone">
   <h2>Delete</h2>
   <p>
@@ -73,6 +95,7 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 <script src="/static/chart-init.js"></script>
+<script src="/static/usage.js"></script>
 <script>
   document.querySelectorAll('select[data-toggle-input]').forEach((sel) => {
     const wrap = document.getElementById(sel.dataset.toggleInput);

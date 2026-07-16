@@ -157,3 +157,75 @@ def test_unknown_window_raises():
         q.peer_timeseries(conn, 1, "invalid")
     with pytest.raises(ValueError):
         q.user_timeseries(conn, 1, "invalid")
+
+
+# --- Arbitrary-period usage (peer_daily) ---------------------------------------
+
+# The wide range below always contains every seeded day regardless of the host's
+# local timezone, so these assertions don't depend on where the tests run.
+_ALL_DAYS = ("0000-01-01", "9999-12-31")
+
+# The day the _seed() samples land on, computed the same way the code buckets it.
+_SEED_DAY = datetime(2026, 4, 27, 12, 0, 0, tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d")
+
+
+def test_range_usage_peer_sums_that_peer_only():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    v1 = conn.execute("SELECT id FROM peers WHERE pubkey='v1='").fetchone()["id"]
+    usage = q.range_usage(conn, "peer", v1, *_ALL_DAYS)
+    assert usage == {"rx": 100, "tx": 1000}
+
+
+def test_range_usage_user_sums_all_their_peers():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    usage = q.range_usage(conn, "user", 1, *_ALL_DAYS)  # Vasya: v1 + v2
+    assert usage == {"rx": 300, "tx": 3000}
+
+
+def test_range_usage_all_sums_every_peer():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    usage = q.range_usage(conn, "all", None, *_ALL_DAYS)
+    assert usage == {"rx": 360, "tx": 3520}  # v1+v2+p1+orphan
+
+
+def test_range_usage_zero_outside_range():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    # a range entirely before the seeded day
+    usage = q.range_usage(conn, "user", 1, "2000-01-01", "2000-12-31")
+    assert usage == {"rx": 0, "tx": 0}
+
+
+def test_range_usage_boundaries_are_inclusive():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    usage = q.range_usage(conn, "user", 1, _SEED_DAY, _SEED_DAY)
+    assert usage == {"rx": 300, "tx": 3000}
+
+
+def test_range_series_returns_one_row_per_day():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    _seed(conn)
+    series = q.range_series(conn, "user", 1, *_ALL_DAYS)
+    assert len(series) == 1
+    assert series[0]["day"] == _SEED_DAY
+    assert series[0]["rx"] == 300
+    assert series[0]["tx"] == 3000
+
+
+def test_range_unknown_scope_raises():
+    conn = dbmod.connect(":memory:")
+    dbmod.init_schema(conn)
+    with pytest.raises(ValueError):
+        q.range_usage(conn, "bogus", 1, *_ALL_DAYS)
+    with pytest.raises(ValueError):
+        q.range_series(conn, "bogus", 1, *_ALL_DAYS)

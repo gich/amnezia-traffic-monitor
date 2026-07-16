@@ -1,10 +1,11 @@
 import argparse
 import json
+import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,6 +26,25 @@ def _fmt_bytes(n: int | None) -> str:
             return f"{f:.2f} {unit}"
         f /= 1024
     return f"{f:.2f} TB"
+
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _resolve_range(day_from: str | None, day_to: str | None) -> tuple[str, str]:
+    """Validate/normalize an inclusive [from, to] day range.
+
+    Missing bounds default to the current local month (1st → today). Both must be
+    'YYYY-MM-DD' and ordered from <= to, else HTTP 400.
+    """
+    today = date.today()
+    day_from = day_from or today.replace(day=1).isoformat()
+    day_to = day_to or today.isoformat()
+    if not _DATE_RE.match(day_from) or not _DATE_RE.match(day_to):
+        raise HTTPException(400, "from/to must be YYYY-MM-DD")
+    if day_from > day_to:
+        raise HTTPException(400, "from must be on or before to")
+    return day_from, day_to
 
 
 def _fmt_handshake(unix_ts: int | None) -> str:
@@ -239,6 +259,66 @@ def create_app(cfg: Config) -> FastAPI:
             return q.user_timeseries(conn, user_id, window)
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    # --- Arbitrary-period usage (from/to are inclusive local YYYY-MM-DD dates) ---
+
+    @app.get("/api/peer/{peer_id}/usage")
+    def api_peer_usage(
+        peer_id: int,
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_usage(conn, "peer", peer_id, day_from, day_to)
+
+    @app.get("/api/peer/{peer_id}/usage_series")
+    def api_peer_usage_series(
+        peer_id: int,
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_series(conn, "peer", peer_id, day_from, day_to)
+
+    @app.get("/api/user/{user_id}/usage")
+    def api_user_usage(
+        user_id: int,
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_usage(conn, "user", user_id, day_from, day_to)
+
+    @app.get("/api/user/{user_id}/usage_series")
+    def api_user_usage_series(
+        user_id: int,
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_series(conn, "user", user_id, day_from, day_to)
+
+    @app.get("/api/total/usage")
+    def api_total_usage(
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_usage(conn, "all", None, day_from, day_to)
+
+    @app.get("/api/total/usage_series")
+    def api_total_usage_series(
+        from_: str | None = Query(None, alias="from"),
+        to: str | None = None,
+        conn: sqlite3.Connection = Depends(get_conn),
+    ):
+        day_from, day_to = _resolve_range(from_, to)
+        return q.range_series(conn, "all", None, day_from, day_to)
 
     return app
 

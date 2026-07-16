@@ -172,3 +172,64 @@ def user_timeseries(conn: sqlite3.Connection, user_id: int, window: str) -> list
         (bucket, bucket, user_id, since_mod),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# --- Arbitrary-period usage (backed by the never-pruned peer_daily rollup) ------
+#
+# `range_usage` / `range_series` answer "how much rx/tx over [day_from, day_to]"
+# for a single peer, a whole user (sum of their peers), or the whole server.
+# Both bounds are inclusive and expressed as local 'YYYY-MM-DD' strings — the
+# same day-bucketing peer_daily is written with. Unlike the *_timeseries window
+# helpers, these are not limited to peer_samples retention.
+
+
+def _usage_scope_sql(scope: str, obj_id: int | None) -> tuple[str, str, list[Any]]:
+    """Resolve a usage scope to (FROM clause, WHERE prefix, leading params).
+
+    scope is validated against a fixed whitelist, so the returned SQL fragments
+    are never derived from caller input — safe to interpolate.
+    """
+    if scope == "peer":
+        return "peer_daily d", "d.peer_id = ? AND ", [obj_id]
+    if scope == "user":
+        return (
+            "peer_daily d JOIN peers p ON p.id = d.peer_id",
+            "p.user_id = ? AND ",
+            [obj_id],
+        )
+    if scope == "all":
+        return "peer_daily d", "", []
+    raise ValueError(f"unknown scope: {scope}")
+
+
+def range_usage(
+    conn: sqlite3.Connection, scope: str, obj_id: int | None, day_from: str, day_to: str
+) -> dict[str, int]:
+    """Total rx/tx bytes over the inclusive day range [day_from, day_to]."""
+    src, prefix, params = _usage_scope_sql(scope, obj_id)
+    row = conn.execute(
+        f"""SELECT COALESCE(SUM(d.rx_bytes), 0) AS rx,
+                   COALESCE(SUM(d.tx_bytes), 0) AS tx
+            FROM {src}
+            WHERE {prefix}d.day >= ? AND d.day <= ?""",
+        params + [day_from, day_to],
+    ).fetchone()
+    return {"rx": row["rx"], "tx": row["tx"]}
+
+
+def range_series(
+    conn: sqlite3.Connection, scope: str, obj_id: int | None, day_from: str, day_to: str
+) -> list[dict[str, Any]]:
+    """Per-day rx/tx over the inclusive day range, one row per day with traffic."""
+    src, prefix, params = _usage_scope_sql(scope, obj_id)
+    rows = conn.execute(
+        f"""SELECT d.day AS day,
+                   SUM(d.rx_bytes) AS rx,
+                   SUM(d.tx_bytes) AS tx
+            FROM {src}
+            WHERE {prefix}d.day >= ? AND d.day <= ?
+            GROUP BY d.day
+            ORDER BY d.day""",
+        params + [day_from, day_to],
+    ).fetchall()
+    return [dict(r) for r in rows]

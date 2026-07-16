@@ -198,6 +198,73 @@ def test_static_assets_served(client):
     assert client.get("/static/style.css").status_code == 200
     assert client.get("/static/sort.js").status_code == 200
     assert client.get("/static/chart-init.js").status_code == 200
+    assert client.get("/static/usage.js").status_code == 200
+
+
+# A range wide enough to contain the fixture's "recent" samples in any timezone.
+_WIDE = "?from=2000-01-01&to=2999-12-31"
+
+
+def test_api_user_usage_totals(client):
+    r = client.get("/api/user/1/usage" + _WIDE)  # Vasya: v1 + v2
+    assert r.status_code == 200
+    assert r.json() == {"rx": 300, "tx": 3000}
+
+
+def test_api_peer_usage_totals(client):
+    import re
+    peer_id = re.findall(r'/peer/(\d+)', client.get("/user/2").text)[0]  # Petya's Desktop peer
+    r = client.get(f"/api/peer/{peer_id}/usage" + _WIDE)
+    assert r.status_code == 200
+    assert r.json() == {"rx": 50, "tx": 500}
+
+
+def test_api_total_usage_sums_every_peer(client):
+    r = client.get("/api/total/usage" + _WIDE)
+    assert r.status_code == 200
+    assert r.json() == {"rx": 360, "tx": 3520}  # v1+v2+p1+orphan
+
+
+def test_api_usage_series_returns_daily_rows(client):
+    r = client.get("/api/user/1/usage_series" + _WIDE)
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert {"day", "rx", "tx"} <= set(data[0].keys())
+    assert sum(p["tx"] for p in data) == 3000
+
+
+def test_api_usage_rejects_bad_date(client):
+    assert client.get("/api/user/1/usage?from=2026-13-99&to=2026-01-01").status_code == 400
+    assert client.get("/api/user/1/usage?from=nonsense&to=2026-01-01").status_code == 400
+
+
+def test_api_usage_rejects_from_after_to(client):
+    r = client.get("/api/user/1/usage?from=2026-12-31&to=2026-01-01")
+    assert r.status_code == 400
+
+
+def test_api_usage_defaults_to_current_month(client):
+    # No from/to: defaults to 1st-of-month .. today, which contains the recent samples.
+    r = client.get("/api/user/1/usage")
+    assert r.status_code == 200
+    assert r.json() == {"rx": 300, "tx": 3000}
+
+
+def test_user_page_has_usage_widget(client):
+    text = client.get("/user/1").text
+    assert "Usage by period" in text
+    assert 'data-usage-url="/api/user/1/usage"' in text
+    assert "/static/usage.js" in text
+
+
+def test_peer_page_has_usage_widget(client):
+    import re
+    peer_id = re.findall(r'/peer/(\d+)', client.get("/user/1").text)[0]
+    text = client.get(f"/peer/{peer_id}").text
+    assert "Usage by period" in text
+    assert f'data-usage-url="/api/peer/{peer_id}/usage"' in text
 
 
 def test_edit_user_renames(client):
